@@ -12,6 +12,7 @@ type AuthContextValue = {
   session: Session | null
   profile: UserProfile | null
   loading: boolean
+  setProfile: (profile: UserProfile | null) => void
   signOut: () => Promise<void>
 }
 
@@ -48,16 +49,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false
 
     async function loadProfile(userId: string) {
-      const [{ data: roleData }, { data: companyData }] = await Promise.all([
-        supabase.rpc('current_user_role'),
-        supabase.rpc('current_user_company_id'),
-      ])
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, role, company_id')
+        .eq('id', userId)
+        .maybeSingle()
 
       if (cancelled) return
+      if (error || !data) {
+        setProfile({ id: userId, role: null, company_id: null })
+        return
+      }
+
       setProfile({
-        id: userId,
-        role: (roleData as string | null) ?? null,
-        company_id: (companyData as string | null) ?? null,
+        id: data.id,
+        role: data.role ?? null,
+        company_id: data.company_id ?? null,
       })
     }
 
@@ -78,8 +85,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       session,
       profile,
       loading,
+      setProfile,
       signOut: async () => {
         await supabase.auth.signOut()
+        setProfile(null)
       },
     }),
     [session, profile, loading],
