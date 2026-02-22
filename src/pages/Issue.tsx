@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { Issuing, Employee, IssuedRecord, EmployeeSlot } from '../types'
+import { printSlip } from '../utils/printSlip'
 import { Search, RefreshCw, History, AlertCircle, CheckCircle } from 'lucide-react'
 
 export default function Issue() {
@@ -10,6 +11,7 @@ export default function Issue() {
   // State
   const [issuings, setIssuings] = useState<Issuing[]>([])
   const [selectedIssuingId, setSelectedIssuingId] = useState<string>(() => localStorage.getItem('activeIssuingId') || '')
+  const [companyName, setCompanyName] = useState('Mining Distribution')
   const [employeeNumber, setEmployeeNumber] = useState('')
   const [loading, setLoading] = useState(false)
   const [distributing, setDistributing] = useState(false)
@@ -59,6 +61,26 @@ export default function Issue() {
     }
 
     loadIssuings()
+  }, [profile?.company_id])
+
+  // Fetch Company Name
+  useEffect(() => {
+    const companyId = profile?.company_id
+    if (!companyId) return
+    
+    async function loadCompany() {
+      const { data } = await supabase
+        .from('companies')
+        .select('name')
+        .eq('id', companyId)
+        .single()
+        
+      if (data?.name) {
+        setCompanyName(data.name)
+      }
+    }
+    
+    loadCompany()
   }, [profile?.company_id])
 
   // Persist selected issuing
@@ -293,9 +315,32 @@ export default function Issue() {
 
       if (selectionsError) throw selectionsError
 
-      // 3. Trigger Print (Placeholder)
-      // window.print() or open modal
-      alert(`Issued successfully to ${employee.name}! Printing slip...`)
+      // 3. Trigger Print
+      const currentIssuing = issuings.find(i => i.id === selectedIssuingId)
+      const issuingName = currentIssuing?.name || ''
+      
+      const printItems = employeeSlots.map(es => {
+        const val = selections[es.slot.id]
+        let itemName = ''
+        if (es.slot.is_choice) {
+          itemName = val as string
+        } else {
+          itemName = es.slot.item_name || es.slot.name
+        }
+        
+        return {
+          slotName: es.slot.name,
+          itemName: itemName,
+          isChoice: es.slot.is_choice
+        }
+      })
+
+      printSlip({
+        companyName,
+        issuingName,
+        employee,
+        items: printItems
+      })
 
       // 4. Reset
       resetState()

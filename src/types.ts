@@ -10,6 +10,7 @@ export interface Employee {
   employee_number: string
   name: string
   issuing_id: string
+  extra_data?: Record<string, any>
   // Add other employee fields as needed
 }
 
