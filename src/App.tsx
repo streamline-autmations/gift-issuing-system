@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+import Layout from '@/components/Layout'
 
 function App() {
   const { session, loading } = useAuth()
@@ -12,7 +13,11 @@ function App() {
   if (!session && !isLogin) return <Navigate to="/login" replace />
   if (session && isLogin) return <Navigate to="/dashboard" replace />
 
-  return <Outlet />
+  if (isLogin) return <Outlet />
+
+  return (
+    <Layout />
+  )
 }
 
 export default App

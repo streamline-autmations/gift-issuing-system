@@ -38,4 +38,12 @@ export interface IssuedRecord {
   issued_at: string
   operator_id: string
   employee?: Employee // For history display
+  selections?: IssuedSelection[] // For reports
+}
+
+export interface IssuedSelection {
+  id: string
+  issued_record_id: string
+  slot_id: string
+  item_name: string
 }
