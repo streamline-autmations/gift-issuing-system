@@ -419,6 +419,17 @@ function GiftsSection() {
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const [editSlotOpen, setEditSlotOpen] = useState(false)
+  const [editSlotId, setEditSlotId] = useState<string>('')
+  const [editSlotName, setEditSlotName] = useState('')
+  const [editSlotIsChoice, setEditSlotIsChoice] = useState(true)
+  const [editSlotIsChoiceLocked, setEditSlotIsChoiceLocked] = useState(false)
+
+  const [editOptionOpen, setEditOptionOpen] = useState(false)
+  const [editOptionId, setEditOptionId] = useState<string>('')
+  const [editOptionName, setEditOptionName] = useState('')
+  const [editOptionQty, setEditOptionQty] = useState<string>('')
+
   const issuingsQuery = useQuery({
     queryKey: ['issuings', companyId, 'for-gifts'],
     enabled: Boolean(companyId),
@@ -480,6 +491,77 @@ function GiftsSection() {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['gift-slots', issuingId] })
+    },
+  })
+
+  const updateSlotMutation = useMutation({
+    mutationFn: async ({
+      slotId,
+      name,
+      is_choice,
+      lockChoice,
+    }: {
+      slotId: string
+      name: string
+      is_choice: boolean
+      lockChoice: boolean
+    }) => {
+      if (!lockChoice) {
+        const { data: anyEmployeeSlots } = await supabase
+          .from('employee_slots')
+          .select('id')
+          .eq('slot_id', slotId)
+          .limit(1)
+
+        const { data: anyIssued } = await supabase
+          .from('issued_selections')
+          .select('id')
+          .eq('slot_id', slotId)
+          .limit(1)
+
+        if ((anyEmployeeSlots && anyEmployeeSlots.length > 0) || (anyIssued && anyIssued.length > 0)) {
+          throw new Error('Cannot change slot type after it has been used. You can still rename it.')
+        }
+      }
+
+      const update: any = { name: name.trim() }
+      if (!lockChoice) update.is_choice = is_choice
+
+      const { error } = await supabase.from('gift_slots').update(update).eq('id', slotId)
+      if (error) throw error
+    },
+    onSuccess: async () => {
+      setEditSlotOpen(false)
+      setEditSlotId('')
+      setEditSlotName('')
+      setEditSlotIsChoice(true)
+      setEditSlotIsChoiceLocked(false)
+      await qc.invalidateQueries({ queryKey: ['gift-slots', issuingId] })
+    },
+    onError: (e: any) => {
+      setMessage(null)
+      setError(e?.message || 'Could not update gift slot.')
+    },
+  })
+
+  const updateOptionMutation = useMutation({
+    mutationFn: async ({ optionId, name, stock_quantity }: { optionId: string; name: string; stock_quantity: number | null }) => {
+      const { error } = await supabase
+        .from('gift_options')
+        .update({ item_name: name.trim(), stock_quantity })
+        .eq('id', optionId)
+      if (error) throw error
+    },
+    onSuccess: async () => {
+      setEditOptionOpen(false)
+      setEditOptionId('')
+      setEditOptionName('')
+      setEditOptionQty('')
+      await qc.invalidateQueries({ queryKey: ['gift-slots', issuingId] })
+    },
+    onError: (e: any) => {
+      setMessage(null)
+      setError(e?.message || 'Could not update gift option.')
     },
   })
 
@@ -640,6 +722,40 @@ function GiftsSection() {
                     <button
                       type="button"
                       className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                      disabled={updateSlotMutation.isPending}
+                      onClick={async (e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setMessage(null)
+                        setError(null)
+
+                        setEditSlotId(slot.id)
+                        setEditSlotName(slot.name)
+                        setEditSlotIsChoice(slot.is_choice)
+
+                        const { data: anyEmployeeSlots } = await supabase
+                          .from('employee_slots')
+                          .select('id')
+                          .eq('slot_id', slot.id)
+                          .limit(1)
+
+                        const { data: anyIssued } = await supabase
+                          .from('issued_selections')
+                          .select('id')
+                          .eq('slot_id', slot.id)
+                          .limit(1)
+
+                        const locked = Boolean((anyEmployeeSlots && anyEmployeeSlots.length > 0) || (anyIssued && anyIssued.length > 0))
+                        setEditSlotIsChoiceLocked(locked)
+
+                        setEditSlotOpen(true)
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                       disabled={deleteSlotMutation.isPending}
                       onClick={(e) => {
                         e.preventDefault()
@@ -671,6 +787,21 @@ function GiftsSection() {
                             </div>
                             <div className="flex items-center gap-3">
                               <div className="text-xs text-slate-500">{formatDate(opt.created_at)}</div>
+                              <button
+                                type="button"
+                                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                                disabled={updateOptionMutation.isPending}
+                                onClick={() => {
+                                  setMessage(null)
+                                  setError(null)
+                                  setEditOptionId(opt.id)
+                                  setEditOptionName(opt.item_name)
+                                  setEditOptionQty(opt.stock_quantity === null || opt.stock_quantity === undefined ? '' : String(opt.stock_quantity))
+                                  setEditOptionOpen(true)
+                                }}
+                              >
+                                Edit
+                              </button>
                               <button
                                 type="button"
                                 className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
@@ -746,6 +877,92 @@ function GiftsSection() {
             className="flex w-full items-center justify-center rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
           >
             {createSlotMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add Slot'}
+          </button>
+        </form>
+      </Modal>
+
+      <Modal open={editSlotOpen} title="Edit Gift Slot" onClose={() => setEditSlotOpen(false)}>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            updateSlotMutation.mutate({
+              slotId: editSlotId,
+              name: editSlotName,
+              is_choice: editSlotIsChoice,
+              lockChoice: editSlotIsChoiceLocked,
+            })
+          }}
+        >
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Slot name</label>
+            <input
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+              value={editSlotName}
+              onChange={(e) => setEditSlotName(e.target.value)}
+              required
+            />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+            <div>
+              <div className="text-sm font-medium text-slate-900">Choice slot</div>
+              <div className="text-xs text-slate-600">Allow multiple options for the operator to choose from.</div>
+            </div>
+            <input
+              type="checkbox"
+              checked={editSlotIsChoice}
+              onChange={(e) => setEditSlotIsChoice(e.target.checked)}
+              className="h-4 w-4"
+              disabled={editSlotIsChoiceLocked}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={updateSlotMutation.isPending}
+            className="flex w-full items-center justify-center rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+          >
+            {updateSlotMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Changes'}
+          </button>
+        </form>
+      </Modal>
+
+      <Modal open={editOptionOpen} title="Edit Gift Option" onClose={() => setEditOptionOpen(false)}>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const stock_quantity =
+              editOptionQty.trim() === '' ? null : Number.isFinite(Number(editOptionQty)) ? Math.max(0, Math.trunc(Number(editOptionQty))) : null
+            updateOptionMutation.mutate({ optionId: editOptionId, name: editOptionName, stock_quantity })
+          }}
+        >
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Option name</label>
+            <input
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+              value={editOptionName}
+              onChange={(e) => setEditOptionName(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Quantity</label>
+            <input
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+              inputMode="numeric"
+              value={editOptionQty}
+              onChange={(e) => setEditOptionQty(e.target.value)}
+              placeholder="Leave blank for unlimited"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={updateOptionMutation.isPending}
+            className="flex w-full items-center justify-center rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+          >
+            {updateOptionMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Changes'}
           </button>
         </form>
       </Modal>
