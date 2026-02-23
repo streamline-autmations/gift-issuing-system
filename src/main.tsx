@@ -22,7 +22,7 @@ const router = createBrowserRouter([
       { path: '/issue', element: <Issue /> },
       { path: '/reports', element: <Reports /> },
       { path: '/admin', element: <Admin /> },
-      { path: '/', element: <Navigate to="/dashboard" replace /> },
+      { path: '/', element: <Navigate to="/issue" replace /> },
     ],
   },
 ])

@@ -1033,7 +1033,7 @@ export default function Admin() {
 
   useEffect(() => {
     if (loading) return
-    if (profile?.role !== 'superadmin') navigate('/dashboard', { replace: true })
+    if (profile?.role !== 'superadmin') navigate('/issue', { replace: true })
   }, [loading, profile?.role, navigate])
 
   if (loading) return null

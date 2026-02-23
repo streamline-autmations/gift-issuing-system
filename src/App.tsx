@@ -11,7 +11,7 @@ function App() {
   const isLogin = location.pathname === '/login'
 
   if (!session && !isLogin) return <Navigate to="/login" replace />
-  if (session && isLogin) return <Navigate to="/dashboard" replace />
+  if (session && isLogin) return <Navigate to="/issue" replace />
 
   if (isLogin) return <Outlet />
 

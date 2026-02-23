@@ -42,7 +42,7 @@ export default function Login() {
     })
 
     setLoading(false)
-    navigate('/dashboard', { replace: true })
+    navigate(profileData?.role === 'superadmin' ? '/dashboard' : '/issue', { replace: true })
   }
 
   return (

@@ -8,13 +8,10 @@ export default function Navbar() {
   
   const isActive = (path: string) => location.pathname === path
   
-  const navItems = [
-    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Issue', path: '/issue', icon: Gift },
-    { name: 'Reports', path: '/reports', icon: FileBarChart },
-  ]
+  const navItems = [{ name: 'Issue', path: '/issue', icon: Gift }, { name: 'Reports', path: '/reports', icon: FileBarChart }]
 
   if (profile?.role === 'superadmin') {
+    navItems.unshift({ name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard })
     navItems.push({ name: 'Admin', path: '/admin', icon: Shield })
   }
 

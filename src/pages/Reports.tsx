@@ -26,6 +26,41 @@ export default function Reports() {
   const [activeTab, setActiveTab] = useState<'outstanding' | 'collected' | 'full'>('outstanding')
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStatus, setFilterStatus] = useState<'all' | 'issued' | 'pending'>('all')
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday' | 'last7' | 'last30'>('all')
+
+  const dateRange = useMemo(() => {
+    if (dateFilter === 'all') return null
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+
+    if (dateFilter === 'today') return { start: startOfToday, end: endOfToday }
+    if (dateFilter === 'yesterday') {
+      const start = new Date(startOfToday)
+      start.setDate(start.getDate() - 1)
+      const end = new Date(endOfToday)
+      end.setDate(end.getDate() - 1)
+      return { start, end }
+    }
+    if (dateFilter === 'last7') {
+      const start = new Date(startOfToday)
+      start.setDate(start.getDate() - 6)
+      return { start, end: endOfToday }
+    }
+    const start = new Date(startOfToday)
+    start.setDate(start.getDate() - 29)
+    return { start, end: endOfToday }
+  }, [dateFilter])
+
+  const issuedRecordsInRange = useMemo(() => {
+    if (!dateRange) return {} as Record<string, IssuedRecord>
+    const out: Record<string, IssuedRecord> = {}
+    for (const [empId, rec] of Object.entries(issuedRecords)) {
+      const d = new Date(rec.issued_at)
+      if (d >= dateRange.start && d <= dateRange.end) out[empId] = rec
+    }
+    return out
+  }, [issuedRecords, dateRange])
 
   const getEmployeeName = (e: Employee) => {
     const first = (e.first_name ?? '').trim()
@@ -203,7 +238,8 @@ export default function Reports() {
   // Report 1: Totals
   const totals = useMemo(() => {
     const totalInIssuing = employees.length
-    const totalIssued = Object.keys(issuedRecords).length
+    const issuedForCounts = dateRange ? issuedRecordsInRange : issuedRecords
+    const totalIssued = Object.keys(issuedForCounts).length
     const totalOutstanding = totalInIssuing - totalIssued
     const percentComplete = totalInIssuing > 0 ? Math.round((totalIssued / totalInIssuing) * 100) : 0
 
@@ -215,7 +251,7 @@ export default function Reports() {
       // Count issued
       let totalIssuedSlot = 0
       qualified.forEach(es => {
-        if (issuedRecords[es.employee_id]) {
+        if (issuedForCounts[es.employee_id]) {
            totalIssuedSlot++
         }
       })
@@ -230,7 +266,7 @@ export default function Reports() {
     })
 
     return { totalInIssuing, totalIssued, totalOutstanding, percentComplete, slotStats }
-  }, [employees, issuedRecords, slots, employeeSlots])
+  }, [employees, issuedRecords, issuedRecordsInRange, dateRange, slots, employeeSlots])
 
   // Filtered Data for Tables
   const filteredData = useMemo(() => {
@@ -255,6 +291,10 @@ export default function Reports() {
     
     return data
   }, [employees, searchQuery, filterStatus, issuedRecords])
+
+  const issuedForCollected = useMemo(() => {
+    return dateRange ? issuedRecordsInRange : issuedRecords
+  }, [dateRange, issuedRecordsInRange, issuedRecords])
 
   // Helper to format extra data
   const formatExtraData = (data?: Record<string, any>) => {
@@ -291,12 +331,6 @@ export default function Reports() {
     ).sort()
 
     const fileSafeIssuing = issuingName.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '')
-
-    const safeSheetName = (name: string) => {
-      const cleaned = name.replace(/[\[\]\*\/\\\?\:]/g, ' ').replace(/\s+/g, ' ').trim()
-      const short = cleaned.length > 31 ? cleaned.slice(0, 31) : cleaned
-      return short || 'Sheet'
-    }
 
     const employeesById = new Map(employees.map((e) => [e.id, e]))
     const recordIdToEmployeeId = new Map<string, string>()
@@ -341,6 +375,43 @@ export default function Reports() {
         return { slot, issued, redeemed: redeemedCount, toRedeem }
       })
 
+    const applyBoldRow = (ws: XLSX.WorkSheet, r: number, startC: number, endC: number) => {
+      for (let c = startC; c <= endC; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c })
+        const cell = ws[addr]
+        if (!cell) continue
+        ;(cell as any).s = { ...(cell as any).s, font: { ...((cell as any).s?.font ?? {}), bold: true } }
+      }
+    }
+
+    const createSlotBlock = (args: {
+      slotTitle: string
+      statusLabel: string
+      count: number
+      employeeNumbers: string[]
+      value: 0 | 1
+    }) => {
+      const aoa: any[][] = []
+      aoa.push([args.slotTitle])
+      aoa.push([])
+      aoa.push(['Count of RewardId'])
+      aoa.push(['RewardEmployeeStatus', 'Total'])
+      aoa.push([args.statusLabel, args.count])
+      aoa.push(['Grand Total', args.count])
+      aoa.push([])
+      aoa.push([])
+      aoa.push(['Sum of Redeemed'])
+      aoa.push(['EmployeeNo', 'Total'])
+      for (const empNo of args.employeeNumbers) aoa.push([empNo, args.value])
+      return aoa
+    }
+
+    const isInRange = (iso: string) => {
+      if (!dateRange) return true
+      const d = new Date(iso)
+      return d >= dateRange.start && d <= dateRange.end
+    }
+
     const summaryAoa: any[][] = [
       ['AwardDesc', 'Issued', 'Redeemed', 'To Redeem'],
       ...slotSummaryRows.map((r) => [r.slot.name, r.issued, r.redeemed, r.toRedeem]),
@@ -352,78 +423,105 @@ export default function Reports() {
     summaryAoa.push(['Grand Total', grandIssued, grandRedeemed, grandToRedeem])
 
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryAoa)
+    applyBoldRow(wsSummary, 0, 0, 3)
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary')
 
-    slotSummaryRows.forEach((r) => {
-      const slot = r.slot
+    const wsToRedeem = XLSX.utils.aoa_to_sheet([] as any[][])
+    const wsRedeemed = XLSX.utils.aoa_to_sheet([] as any[][])
+
+    const sortedSlots = slotSummaryRows.map((r) => r.slot)
+    const blocksPerRow = 2
+    const blockColWidth = 4
+
+    sortedSlots.forEach((slot, index) => {
       const eligibleIds = Array.from(eligibleBySlotId.get(slot.id) ?? new Set<string>())
-      eligibleIds.sort((a, b) => (employeesById.get(a)?.employee_number ?? '').localeCompare(employeesById.get(b)?.employee_number ?? ''))
+      eligibleIds.sort((a, b) =>
+        (employeesById.get(a)?.employee_number ?? '').localeCompare(employeesById.get(b)?.employee_number ?? ''),
+      )
 
       const redeemedMap = selectionDetailsBySlotId.get(slot.id) ?? new Map<string, any>()
+      const redeemedEmployeeIdsAll = new Set<string>(Array.from(redeemedMap.keys()))
+      const redeemedEmployeeIdsInRange = new Set<string>(
+        Array.from(redeemedMap.entries())
+          .filter(([, v]) => isInRange(v.issuedAt))
+          .map(([empId]) => empId),
+      )
 
-      const aoa: any[][] = []
-      aoa.push(['Values'])
-      aoa.push(['AwardDesc', 'Issued', 'Redeemed', 'To Redeem'])
-      aoa.push([`${issuingName} (${slot.name})`, r.issued, r.redeemed, r.toRedeem])
-      aoa.push(['Grand Total', r.issued, r.redeemed, r.toRedeem])
-      aoa.push([])
-      aoa.push(['EmployeeNo', 'Redeemed', slot.is_choice ? 'Selected Gift' : '', 'Redeemed At'])
+      const toRedeemEmployeeNos = eligibleIds
+        .filter((id) => !redeemedEmployeeIdsAll.has(id))
+        .map((id) => employeesById.get(id)?.employee_number ?? '')
+        .filter(Boolean)
 
-      eligibleIds.forEach((empId) => {
-        const emp = employeesById.get(empId)
-        if (!emp) return
-        const redeemed = redeemedMap.get(empId)
-        const redeemedFlag = redeemed ? 1 : 0
-        const selectedGift = redeemed ? redeemed.itemName : ''
-        const redeemedAt = redeemed ? new Date(redeemed.issuedAt).toLocaleString() : ''
-        aoa.push([emp.employee_number, redeemedFlag, slot.is_choice ? selectedGift : '', redeemedAt])
-      })
+      const redeemedEmployeeNos = eligibleIds
+        .filter((id) => redeemedEmployeeIdsInRange.has(id))
+        .map((id) => employeesById.get(id)?.employee_number ?? '')
+        .filter(Boolean)
 
-      const ws = XLSX.utils.aoa_to_sheet(aoa)
-      XLSX.utils.book_append_sheet(wb, ws, safeSheetName(slot.name))
+      const rowGroup = Math.floor(index / blocksPerRow)
+      const colGroup = index % blocksPerRow
+      const origin = { r: rowGroup * 40, c: colGroup * blockColWidth }
+
+      const slotStats = slotSummaryRows.find((s) => s.slot.id === slot.id)
+      const toRedeemCount = slotStats?.toRedeem ?? toRedeemEmployeeNos.length
+      const redeemedCount = dateRange ? redeemedEmployeeNos.length : slotStats?.redeemed ?? redeemedEmployeeNos.length
+
+      XLSX.utils.sheet_add_aoa(
+        wsToRedeem,
+        createSlotBlock({
+          slotTitle: slot.name,
+          statusLabel: 'ISS',
+          count: toRedeemCount,
+          employeeNumbers: toRedeemEmployeeNos,
+          value: 0,
+        }),
+        { origin },
+      )
+
+      XLSX.utils.sheet_add_aoa(
+        wsRedeemed,
+        createSlotBlock({
+          slotTitle: slot.name,
+          statusLabel: 'Redeemed',
+          count: redeemedCount,
+          employeeNumbers: redeemedEmployeeNos,
+          value: 1,
+        }),
+        { origin },
+      )
+
+      applyBoldRow(wsToRedeem, origin.r + 0, origin.c + 0, origin.c + 1)
+      applyBoldRow(wsToRedeem, origin.r + 3, origin.c + 0, origin.c + 1)
+      applyBoldRow(wsToRedeem, origin.r + 5, origin.c + 0, origin.c + 1)
+      applyBoldRow(wsToRedeem, origin.r + 9, origin.c + 0, origin.c + 1)
+
+      applyBoldRow(wsRedeemed, origin.r + 0, origin.c + 0, origin.c + 1)
+      applyBoldRow(wsRedeemed, origin.r + 3, origin.c + 0, origin.c + 1)
+      applyBoldRow(wsRedeemed, origin.r + 5, origin.c + 0, origin.c + 1)
+      applyBoldRow(wsRedeemed, origin.r + 9, origin.c + 0, origin.c + 1)
     })
 
-    // 2. Outstanding Sheet
-    const outstandingRows = employees
-      .filter(e => !issuedRecords[e.id])
-      .map(e => ({
-        'EmployeeNo': e.employee_number,
-        'FirstName': e.first_name ?? '',
-        'LastName': e.last_name ?? '',
-        ...allExtraKeys.reduce((acc, k) => {
-          ;(acc as any)[k] = (e.extra_data as any)?.[k] ?? ''
-          return acc
-        }, {} as Record<string, any>),
-      }))
-    const wsOutstanding = XLSX.utils.json_to_sheet(outstandingRows)
-    XLSX.utils.book_append_sheet(wb, wsOutstanding, 'To Redeem')
+    const colsForBlocks = Array.from({ length: blocksPerRow * blockColWidth }, (_v, idx) => {
+      const mod = idx % blockColWidth
+      if (mod === 0) return { wch: 18 }
+      if (mod === 1) return { wch: 10 }
+      return { wch: 3 }
+    })
+    ;(wsToRedeem as any)['!cols'] = colsForBlocks
+    ;(wsRedeemed as any)['!cols'] = colsForBlocks
 
-    // 3. Collected Sheet
-    const collectedRows = employees
-      .filter(e => issuedRecords[e.id])
-      .map(e => {
-        const record = issuedRecords[e.id]
-        return {
-          'EmployeeNo': e.employee_number,
-          'CollectedAt': new Date(record.issued_at).toLocaleString(),
-          'Items': getItemsReceived(e.id),
-          ...allExtraKeys.reduce((acc, k) => {
-            ;(acc as any)[k] = (e.extra_data as any)?.[k] ?? ''
-            return acc
-          }, {} as Record<string, any>),
-        }
-      })
-    const wsCollected = XLSX.utils.json_to_sheet(collectedRows)
-    XLSX.utils.book_append_sheet(wb, wsCollected, 'Redeemed')
+    XLSX.utils.book_append_sheet(wb, wsToRedeem, 'To Redeem')
+    XLSX.utils.book_append_sheet(wb, wsRedeemed, 'Redeemed')
 
     // 4. Full Data Sheet
     const fullRows = employees.map(e => {
         const record = issuedRecords[e.id]
         return {
-          'EmployeeNo': e.employee_number,
-          'Collected': record ? 1 : 0,
-          'CollectedAt': record ? new Date(record.issued_at).toLocaleString() : '',
-          'Items': getItemsReceived(e.id),
+          'Employee Number': e.employee_number,
+          'First Name': e.first_name ?? '',
+          'Last Name': e.last_name ?? '',
+          'Status': record ? 'Issued' : 'Pending',
+          'Date Collected': record ? new Date(record.issued_at).toLocaleString() : '',
+          'Items Received': getItemsReceived(e.id),
           ...allExtraKeys.reduce((acc, k) => {
             ;(acc as any)[k] = (e.extra_data as any)?.[k] ?? ''
             return acc
@@ -431,6 +529,11 @@ export default function Reports() {
         }
     })
     const wsFull = XLSX.utils.json_to_sheet(fullRows)
+    const fullRef = (wsFull as any)['!ref']
+    if (fullRef) {
+      const range = XLSX.utils.decode_range(fullRef)
+      applyBoldRow(wsFull, 0, range.s.c, range.e.c)
+    }
     XLSX.utils.book_append_sheet(wb, wsFull, 'Full Data')
 
     // Save
@@ -466,6 +569,19 @@ export default function Reports() {
           >
             <option value="">Select Issuing...</option>
             {issuings.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+
+          <select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value as any)}
+            disabled={!selectedIssuingId}
+            className="border border-gray-300 rounded-md px-3 py-2 bg-white text-gray-800 focus:ring-2 focus:ring-slate-900 outline-none min-w-[200px]"
+          >
+            <option value="all">All Time</option>
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="last7">Last 7 Days</option>
+            <option value="last30">Last 30 Days</option>
           </select>
         </div>
 
@@ -661,12 +777,12 @@ export default function Reports() {
                         filteredData
                         .filter(e => {
                              if (activeTab === 'outstanding') return !issuedRecords[e.id]
-                             if (activeTab === 'collected') return issuedRecords[e.id]
+                             if (activeTab === 'collected') return Boolean(issuedForCollected[e.id])
                              return true
                         })
                         .slice(0, 100) // Limit render for perf
                         .map(e => {
-                          const record = issuedRecords[e.id]
+                          const record = activeTab === 'collected' ? issuedForCollected[e.id] : issuedRecords[e.id]
                           return (
                             <tr key={e.id} className="hover:bg-gray-50">
                               <td className="px-4 py-3 font-medium text-gray-900">{e.employee_number}</td>
