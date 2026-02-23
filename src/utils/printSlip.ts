@@ -17,11 +17,8 @@ export const printSlip = ({
   employee,
   items,
 }: PrintSlipProps) => {
-  const printWindow = window.open('', '_blank', 'width=800,height=600')
-  if (!printWindow) {
-    alert('Please allow popups to print the slip.')
-    return
-  }
+  const paperWidthMm = 80
+  const paperMarginMm = 0
 
   const now = new Date(issuedAt).toLocaleString()
 
@@ -57,23 +54,28 @@ export const printSlip = ({
     <head>
       <title>Issue Slip - ${employee.employee_number}</title>
       <style>
+        @page {
+          size: ${paperWidthMm}mm auto;
+          margin: ${paperMarginMm}mm;
+        }
+
         body {
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
           margin: 0;
-          padding: 20px;
+          padding: 0;
           color: #333;
+          width: ${paperWidthMm}mm;
         }
         
         .slip-container {
-          max-width: 210mm; /* A4 width approx */
-          margin: 0 auto;
-          border: 1px solid #ccc;
-          padding: 40px;
+          width: ${paperWidthMm}mm;
+          margin: 0;
+          padding: 4mm 3mm;
           box-sizing: border-box;
         }
 
         h1 {
-          font-size: 24px;
+          font-size: 14px;
           font-weight: bold;
           margin: 0 0 5px 0;
           text-transform: uppercase;
@@ -81,42 +83,43 @@ export const printSlip = ({
         }
 
         h2 {
-          font-size: 16px;
+          font-size: 12px;
           font-weight: normal;
-          margin: 0 0 20px 0;
+          margin: 0 0 6px 0;
           text-align: center;
           color: #666;
         }
 
         .subline {
-          font-size: 14px;
+          font-size: 11px;
           font-weight: normal;
-          margin: -14px 0 20px 0;
+          margin: 0 0 10px 0;
           text-align: center;
           color: #666;
         }
 
         .divider {
-          border-bottom: 2px solid #eee;
-          margin: 20px 0;
+          border-bottom: 1px dashed #bbb;
+          margin: 8px 0;
         }
 
         .section-title {
-          font-size: 14px;
+          font-size: 11px;
           font-weight: bold;
           text-transform: uppercase;
           color: #888;
-          margin-bottom: 10px;
+          margin-bottom: 6px;
         }
 
         .detail-row {
           display: flex;
-          margin-bottom: 5px;
+          margin-bottom: 3px;
+          font-size: 11px;
         }
 
         .label {
           font-weight: 600;
-          width: 150px;
+          width: 34mm;
         }
 
         .value {
@@ -126,30 +129,32 @@ export const printSlip = ({
         .item-row {
           display: flex;
           align-items: center;
-          padding: 8px 0;
-          border-bottom: 1px solid #f9f9f9;
+          padding: 4px 0;
+          border-bottom: 1px dotted #ddd;
         }
 
         .checkbox {
-          width: 16px;
-          height: 16px;
-          border: 2px solid #333;
-          margin-right: 15px;
+          width: 12px;
+          height: 12px;
+          border: 1px solid #333;
+          margin-right: 8px;
         }
 
         .slot-name {
           font-weight: 600;
-          margin-right: 10px;
+          margin-right: 6px;
+          font-size: 11px;
         }
 
         .item-name {
           color: #333;
+          font-size: 11px;
         }
 
         .choice-tag {
-          font-size: 12px;
+          font-size: 10px;
           color: #666;
-          margin-left: 5px;
+          margin-left: 4px;
           font-style: italic;
         }
 
@@ -157,47 +162,30 @@ export const printSlip = ({
           display: flex;
           justify-content: space-between;
           align-items: flex-end;
-          margin-top: 40px;
+          margin-top: 10px;
         }
 
         .signature-section {
           text-align: right;
-          width: 250px;
+          width: 45mm;
         }
 
         .signature-line {
           border-bottom: 1px solid #333;
           margin-bottom: 5px;
-          height: 30px;
+          height: 18px;
         }
 
         .signature-label {
-          font-size: 12px;
+          font-size: 10px;
           font-weight: bold;
         }
         
         .acknowledgment {
-            font-size: 10px;
-            color: #666;
-            margin-top: 5px;
-            text-align: right;
-        }
-
-        @media print {
-          body {
-            padding: 0;
-            margin: 0;
-          }
-          .slip-container {
-            border: 1px solid #ccc;
-            padding: 20px;
-            width: 100%;
-            max-width: none;
-          }
-          @page {
-            size: A4;
-            margin: 12mm;
-          }
+          font-size: 9px;
+          color: #666;
+          margin-top: 3px;
+          text-align: right;
         }
       </style>
     </head>
@@ -237,18 +225,52 @@ export const printSlip = ({
         </div>
       </div>
       <script>
-        window.onafterprint = function() {
-          window.close();
-        }
-        window.onload = function() {
-          window.print();
-          setTimeout(function() { window.close(); }, 2000);
-        }
+        window.onload = function() { window.print(); }
       </script>
     </body>
     </html>
   `
 
-  printWindow.document.write(htmlContent)
-  printWindow.document.close()
+  const iframe = document.createElement('iframe')
+  iframe.style.position = 'fixed'
+  iframe.style.right = '0'
+  iframe.style.bottom = '0'
+  iframe.style.width = '0'
+  iframe.style.height = '0'
+  iframe.style.border = '0'
+  iframe.setAttribute('aria-hidden', 'true')
+  document.body.appendChild(iframe)
+
+  const cleanup = () => {
+    if (iframe.parentNode) iframe.parentNode.removeChild(iframe)
+  }
+
+  const doc = iframe.contentDocument
+  if (!doc) {
+    cleanup()
+    return
+  }
+
+  doc.open()
+  doc.write(htmlContent)
+  doc.close()
+
+  const w = iframe.contentWindow
+  if (!w) {
+    cleanup()
+    return
+  }
+
+  w.onafterprint = () => {
+    cleanup()
+    window.focus()
+  }
+
+  w.onload = () => {
+    w.focus()
+    w.print()
+    setTimeout(() => {
+      window.focus()
+    }, 50)
+  }
 }
