@@ -292,35 +292,111 @@ export default function Reports() {
 
     const fileSafeIssuing = issuingName.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '')
 
-    // 1. Totals Sheet
-    const totalsData = [
-      ['Metric', 'Value'],
-      ['Total in Issuing', totals.totalInIssuing],
-      ['Total Issued', totals.totalIssued],
-      ['Total Outstanding', totals.totalOutstanding],
-      ['Percent Complete', `${totals.percentComplete}%`],
-      [],
-      ['Slot Breakdown'],
-      ['Slot Name', 'Total Qualified', 'Total Issued', 'Total Outstanding'],
-      ...totals.slotStats.map(s => [s.name, s.totalQualified, s.totalIssued, s.totalOutstanding])
+    const safeSheetName = (name: string) => {
+      const cleaned = name.replace(/[\[\]\*\/\\\?\:]/g, ' ').replace(/\s+/g, ' ').trim()
+      const short = cleaned.length > 31 ? cleaned.slice(0, 31) : cleaned
+      return short || 'Sheet'
+    }
+
+    const employeesById = new Map(employees.map((e) => [e.id, e]))
+    const recordIdToEmployeeId = new Map<string, string>()
+    Object.values(issuedRecords).forEach((r) => recordIdToEmployeeId.set(r.id, r.employee_id))
+
+    const selectionDetailsBySlotId = new Map<
+      string,
+      Map<string, { itemName: string; issuedAt: string }>
+    >()
+
+    Object.values(issuedSelections).forEach((sels) => {
+      sels.forEach((s) => {
+        const employeeId = recordIdToEmployeeId.get(s.issued_record_id)
+        if (!employeeId) return
+        const record = issuedRecords[employeeId]
+        if (!record) return
+
+        const slotId = s.slot_id
+        const itemName = s.gift_option?.item_name ?? ''
+        const issuedAt = record.issued_at
+
+        if (!selectionDetailsBySlotId.has(slotId)) selectionDetailsBySlotId.set(slotId, new Map())
+        selectionDetailsBySlotId.get(slotId)!.set(employeeId, { itemName, issuedAt })
+      })
+    })
+
+    const eligibleBySlotId = new Map<string, Set<string>>()
+    employeeSlots.forEach((es) => {
+      if (!eligibleBySlotId.has(es.slot_id)) eligibleBySlotId.set(es.slot_id, new Set())
+      eligibleBySlotId.get(es.slot_id)!.add(es.employee_id)
+    })
+
+    const slotSummaryRows = slots
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((slot) => {
+        const eligible = eligibleBySlotId.get(slot.id) ?? new Set<string>()
+        const redeemed = selectionDetailsBySlotId.get(slot.id) ?? new Map<string, any>()
+        const issued = eligible.size
+        const redeemedCount = redeemed.size
+        const toRedeem = Math.max(0, issued - redeemedCount)
+        return { slot, issued, redeemed: redeemedCount, toRedeem }
+      })
+
+    const summaryAoa: any[][] = [
+      ['AwardDesc', 'Issued', 'Redeemed', 'To Redeem'],
+      ...slotSummaryRows.map((r) => [r.slot.name, r.issued, r.redeemed, r.toRedeem]),
     ]
-    const wsTotals = XLSX.utils.aoa_to_sheet(totalsData)
-    XLSX.utils.book_append_sheet(wb, wsTotals, 'Totals')
+
+    const grandIssued = slotSummaryRows.reduce((a, r) => a + r.issued, 0)
+    const grandRedeemed = slotSummaryRows.reduce((a, r) => a + r.redeemed, 0)
+    const grandToRedeem = slotSummaryRows.reduce((a, r) => a + r.toRedeem, 0)
+    summaryAoa.push(['Grand Total', grandIssued, grandRedeemed, grandToRedeem])
+
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryAoa)
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary')
+
+    slotSummaryRows.forEach((r) => {
+      const slot = r.slot
+      const eligibleIds = Array.from(eligibleBySlotId.get(slot.id) ?? new Set<string>())
+      eligibleIds.sort((a, b) => (employeesById.get(a)?.employee_number ?? '').localeCompare(employeesById.get(b)?.employee_number ?? ''))
+
+      const redeemedMap = selectionDetailsBySlotId.get(slot.id) ?? new Map<string, any>()
+
+      const aoa: any[][] = []
+      aoa.push(['Values'])
+      aoa.push(['AwardDesc', 'Issued', 'Redeemed', 'To Redeem'])
+      aoa.push([`${issuingName} (${slot.name})`, r.issued, r.redeemed, r.toRedeem])
+      aoa.push(['Grand Total', r.issued, r.redeemed, r.toRedeem])
+      aoa.push([])
+      aoa.push(['EmployeeNo', 'Redeemed', slot.is_choice ? 'Selected Gift' : '', 'Redeemed At'])
+
+      eligibleIds.forEach((empId) => {
+        const emp = employeesById.get(empId)
+        if (!emp) return
+        const redeemed = redeemedMap.get(empId)
+        const redeemedFlag = redeemed ? 1 : 0
+        const selectedGift = redeemed ? redeemed.itemName : ''
+        const redeemedAt = redeemed ? new Date(redeemed.issuedAt).toLocaleString() : ''
+        aoa.push([emp.employee_number, redeemedFlag, slot.is_choice ? selectedGift : '', redeemedAt])
+      })
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+      XLSX.utils.book_append_sheet(wb, ws, safeSheetName(slot.name))
+    })
 
     // 2. Outstanding Sheet
     const outstandingRows = employees
       .filter(e => !issuedRecords[e.id])
       .map(e => ({
-        'Employee Number': e.employee_number,
-        'First Name': e.first_name ?? '',
-        'Last Name': e.last_name ?? '',
+        'EmployeeNo': e.employee_number,
+        'FirstName': e.first_name ?? '',
+        'LastName': e.last_name ?? '',
         ...allExtraKeys.reduce((acc, k) => {
           ;(acc as any)[k] = (e.extra_data as any)?.[k] ?? ''
           return acc
         }, {} as Record<string, any>),
       }))
     const wsOutstanding = XLSX.utils.json_to_sheet(outstandingRows)
-    XLSX.utils.book_append_sheet(wb, wsOutstanding, 'Outstanding')
+    XLSX.utils.book_append_sheet(wb, wsOutstanding, 'To Redeem')
 
     // 3. Collected Sheet
     const collectedRows = employees
@@ -328,11 +404,9 @@ export default function Reports() {
       .map(e => {
         const record = issuedRecords[e.id]
         return {
-          'Employee Number': e.employee_number,
-          'First Name': e.first_name ?? '',
-          'Last Name': e.last_name ?? '',
-          'Date Collected': new Date(record.issued_at).toLocaleString(),
-          'Items Received': getItemsReceived(e.id),
+          'EmployeeNo': e.employee_number,
+          'CollectedAt': new Date(record.issued_at).toLocaleString(),
+          'Items': getItemsReceived(e.id),
           ...allExtraKeys.reduce((acc, k) => {
             ;(acc as any)[k] = (e.extra_data as any)?.[k] ?? ''
             return acc
@@ -340,18 +414,16 @@ export default function Reports() {
         }
       })
     const wsCollected = XLSX.utils.json_to_sheet(collectedRows)
-    XLSX.utils.book_append_sheet(wb, wsCollected, 'Collected')
+    XLSX.utils.book_append_sheet(wb, wsCollected, 'Redeemed')
 
     // 4. Full Data Sheet
     const fullRows = employees.map(e => {
         const record = issuedRecords[e.id]
         return {
-          'Employee Number': e.employee_number,
-          'First Name': e.first_name ?? '',
-          'Last Name': e.last_name ?? '',
-          'Status': record ? 'Issued' : 'Pending',
-          'Date Collected': record ? new Date(record.issued_at).toLocaleString() : '',
-          'Items Received': getItemsReceived(e.id),
+          'EmployeeNo': e.employee_number,
+          'Collected': record ? 1 : 0,
+          'CollectedAt': record ? new Date(record.issued_at).toLocaleString() : '',
+          'Items': getItemsReceived(e.id),
           ...allExtraKeys.reduce((acc, k) => {
             ;(acc as any)[k] = (e.extra_data as any)?.[k] ?? ''
             return acc
