@@ -78,51 +78,80 @@ export default function Reports() {
     
     async function loadData() {
       try {
+        const fetchAll = async <T,>(
+          fetchPage: (from: number, to: number) => any,
+          pageSize = 1000,
+        ) => {
+          let from = 0
+          const out: T[] = []
+          while (true) {
+            const to = from + pageSize - 1
+            const { data, error } = await (fetchPage(from, to) as any)
+            if (error) throw error
+            const page = (data ?? []) as T[]
+            out.push(...page)
+            if (page.length < pageSize) break
+            from += pageSize
+          }
+          return out
+        }
+
         // Fetch all Employees
-        const { data: empData } = await supabase
-          .from('employees')
-          .select('id, company_id, issuing_id, employee_number, first_name, last_name, extra_data')
-          .eq('issuing_id', selectedIssuingId)
+        const allEmployees = await fetchAll<Employee>((from, to) =>
+          supabase
+            .from('employees')
+            .select('id, company_id, issuing_id, employee_number, first_name, last_name, extra_data')
+            .eq('issuing_id', selectedIssuingId)
+            .order('employee_number', { ascending: true })
+            .range(from, to),
+        )
         
-        const allEmployees = empData || []
         setEmployees(allEmployees)
 
         // Fetch all Issued Records
-        const { data: recordData } = await supabase
-          .from('issued_records')
-          .select('id, company_id, issuing_id, employee_id, issued_at')
-          .eq('issuing_id', selectedIssuingId)
+        const recordData = await fetchAll<IssuedRecord>((from, to) =>
+          supabase
+            .from('issued_records')
+            .select('id, company_id, issuing_id, employee_id, issued_at')
+            .eq('issuing_id', selectedIssuingId)
+            .order('issued_at', { ascending: true })
+            .range(from, to),
+        )
         
         const recordsMap: Record<string, IssuedRecord> = {}
         const recordIds: string[] = []
-        if (recordData) {
-          recordData.forEach(r => {
-            recordsMap[r.employee_id] = r
-            recordIds.push(r.id)
-          })
-        }
+        recordData.forEach(r => {
+          recordsMap[r.employee_id] = r
+          recordIds.push(r.id)
+        })
         setIssuedRecords(recordsMap)
 
         // Fetch all Selections (if any records exist)
         const selectionsMap: Record<string, IssuedSelection[]> = {}
-        if (recordIds.length > 0) {
-          const { data: selData } = await supabase
+        const allSelections = await fetchAll<any>((from, to) =>
+          supabase
             .from('issued_selections')
-            .select('id, issued_record_id, slot_id, gift_option_id, company_id, slot:gift_slots!issued_selections_slot_id_fkey(name, is_choice), gift_option:gift_options!issued_selections_gift_option_id_fkey(item_name)')
-            .in('issued_record_id', recordIds)
-          
-          if (selData) {
-            selData.forEach((raw: any) => {
-              const normalized: IssuedSelection = {
-                ...raw,
-                slot: Array.isArray(raw.slot) ? raw.slot[0] : raw.slot,
-                gift_option: Array.isArray(raw.gift_option) ? raw.gift_option[0] : raw.gift_option,
-              }
-              if (!selectionsMap[normalized.issued_record_id]) selectionsMap[normalized.issued_record_id] = []
-              selectionsMap[normalized.issued_record_id].push(normalized)
-            })
+            .select(
+              'id, issued_record_id, slot_id, gift_option_id, company_id, issued_record:issued_records!issued_selections_issued_record_id_fkey(issuing_id), slot:gift_slots!issued_selections_slot_id_fkey(name, is_choice), gift_option:gift_options!issued_selections_gift_option_id_fkey(item_name)',
+            )
+            .eq('issued_record.issuing_id', selectedIssuingId)
+            .order('id', { ascending: true })
+            .range(from, to),
+        )
+
+        allSelections.forEach((raw: any) => {
+          const normalized: IssuedSelection = {
+            id: raw.id,
+            issued_record_id: raw.issued_record_id,
+            slot_id: raw.slot_id,
+            gift_option_id: raw.gift_option_id,
+            company_id: raw.company_id,
+            slot: Array.isArray(raw.slot) ? raw.slot[0] : raw.slot,
+            gift_option: Array.isArray(raw.gift_option) ? raw.gift_option[0] : raw.gift_option,
           }
-        }
+          if (!selectionsMap[normalized.issued_record_id]) selectionsMap[normalized.issued_record_id] = []
+          selectionsMap[normalized.issued_record_id].push(normalized)
+        })
         setIssuedSelections(selectionsMap)
 
         // Fetch Slots and Employee Allocations (for Totals breakdown)
@@ -134,36 +163,30 @@ export default function Reports() {
         // Usually slots are linked to employees via employee_slots.
         // Let's fetch employee_slots for all employees in this issuing.
         
-        const empIds = allEmployees.map(e => e.id)
-        if (empIds.length > 0) {
-            // Note: If too many employees, this query might be large. Supabase handles reasonable sizes.
-            // If thousands, we might need chunking. For now assume < 1000 or reasonable.
-            const { data: empSlotsData } = await supabase
-                .from('employee_slots')
-                .select('id, employee_id, slot_id, company_id, slot:gift_slots(id, issuing_id, company_id, name, is_choice, created_at)')
-                .in('employee_id', empIds)
-            
-            if (empSlotsData) {
-                const normalizedEmployeeSlots = (empSlotsData as any[]).map((row) => ({
-                  id: row.id,
-                  employee_id: row.employee_id,
-                  slot_id: row.slot_id,
-                  company_id: row.company_id,
-                  slot: row.slot,
-                })) as EmployeeSlot[]
+        const empSlotsData = await fetchAll<any>((from, to) =>
+          supabase
+            .from('employee_slots')
+            .select('id, employee_id, slot_id, company_id, slot:gift_slots(id, issuing_id, company_id, name, is_choice, created_at)')
+            .eq('slot.issuing_id', selectedIssuingId)
+            .order('id', { ascending: true })
+            .range(from, to),
+        )
 
-                setEmployeeSlots(normalizedEmployeeSlots)
-                
-                const uniqueSlots = new Map<string, GiftSlot>()
-                normalizedEmployeeSlots.forEach((es: any) => {
-                    if (es.slot) uniqueSlots.set(es.slot.id, es.slot)
-                })
-                setSlots(Array.from(uniqueSlots.values()))
-            }
-        } else {
-            setEmployeeSlots([])
-            setSlots([])
-        }
+        const normalizedEmployeeSlots = (empSlotsData as any[]).map((row) => ({
+          id: row.id,
+          employee_id: row.employee_id,
+          slot_id: row.slot_id,
+          company_id: row.company_id,
+          slot: Array.isArray(row.slot) ? row.slot[0] : row.slot,
+        })) as EmployeeSlot[]
+
+        setEmployeeSlots(normalizedEmployeeSlots)
+        
+        const uniqueSlots = new Map<string, GiftSlot>()
+        normalizedEmployeeSlots.forEach((es: any) => {
+            if (es.slot) uniqueSlots.set(es.slot.id, es.slot)
+        })
+        setSlots(Array.from(uniqueSlots.values()))
 
       } catch (err) {
         console.error('Error loading report data:', err)
