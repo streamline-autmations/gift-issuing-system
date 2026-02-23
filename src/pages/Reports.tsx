@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import type { Issuing, Employee, IssuedRecord, Slot, EmployeeSlot, IssuedSelection } from '@/types'
+import type { Employee, EmployeeSlot, GiftSlot, IssuedRecord, IssuedSelection, Issuing } from '@/types'
 import { Download, Users, CheckCircle, Clock, BarChart3, Search, Filter } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
@@ -19,13 +19,19 @@ export default function Reports() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [issuedRecords, setIssuedRecords] = useState<Record<string, IssuedRecord>>({})
   const [issuedSelections, setIssuedSelections] = useState<Record<string, IssuedSelection[]>>({}) // key: issued_record_id
-  const [slots, setSlots] = useState<Slot[]>([])
+  const [slots, setSlots] = useState<GiftSlot[]>([])
   const [employeeSlots, setEmployeeSlots] = useState<EmployeeSlot[]>([])
 
   // UI State
   const [activeTab, setActiveTab] = useState<'outstanding' | 'collected' | 'full'>('outstanding')
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStatus, setFilterStatus] = useState<'all' | 'issued' | 'pending'>('all')
+
+  const getEmployeeName = (e: Employee) => {
+    const first = (e.first_name ?? '').trim()
+    const last = (e.last_name ?? '').trim()
+    return `${first} ${last}`.trim()
+  }
 
   // 1. Load Companies (Superadmin) or Set Default
   useEffect(() => {
@@ -75,7 +81,7 @@ export default function Reports() {
         // Fetch all Employees
         const { data: empData } = await supabase
           .from('employees')
-          .select('*')
+          .select('id, company_id, issuing_id, employee_number, first_name, last_name, extra_data')
           .eq('issuing_id', selectedIssuingId)
         
         const allEmployees = empData || []
@@ -84,7 +90,7 @@ export default function Reports() {
         // Fetch all Issued Records
         const { data: recordData } = await supabase
           .from('issued_records')
-          .select('*')
+          .select('id, company_id, issuing_id, employee_id, issued_at')
           .eq('issuing_id', selectedIssuingId)
         
         const recordsMap: Record<string, IssuedRecord> = {}
@@ -102,13 +108,18 @@ export default function Reports() {
         if (recordIds.length > 0) {
           const { data: selData } = await supabase
             .from('issued_selections')
-            .select('*')
+            .select('id, issued_record_id, slot_id, gift_option_id, company_id, slot:gift_slots!issued_selections_slot_id_fkey(name, is_choice), gift_option:gift_options!issued_selections_gift_option_id_fkey(item_name)')
             .in('issued_record_id', recordIds)
           
           if (selData) {
-            selData.forEach(s => {
-              if (!selectionsMap[s.issued_record_id]) selectionsMap[s.issued_record_id] = []
-              selectionsMap[s.issued_record_id].push(s)
+            selData.forEach((raw: any) => {
+              const normalized: IssuedSelection = {
+                ...raw,
+                slot: Array.isArray(raw.slot) ? raw.slot[0] : raw.slot,
+                gift_option: Array.isArray(raw.gift_option) ? raw.gift_option[0] : raw.gift_option,
+              }
+              if (!selectionsMap[normalized.issued_record_id]) selectionsMap[normalized.issued_record_id] = []
+              selectionsMap[normalized.issued_record_id].push(normalized)
             })
           }
         }
@@ -129,15 +140,22 @@ export default function Reports() {
             // If thousands, we might need chunking. For now assume < 1000 or reasonable.
             const { data: empSlotsData } = await supabase
                 .from('employee_slots')
-                .select('*, slot:slots(*)')
+                .select('id, employee_id, slot_id, company_id, slot:gift_slots(id, issuing_id, company_id, name, is_choice, created_at)')
                 .in('employee_id', empIds)
             
             if (empSlotsData) {
-                setEmployeeSlots(empSlotsData)
+                const normalizedEmployeeSlots = (empSlotsData as any[]).map((row) => ({
+                  id: row.id,
+                  employee_id: row.employee_id,
+                  slot_id: row.slot_id,
+                  company_id: row.company_id,
+                  slot: row.slot,
+                })) as EmployeeSlot[]
+
+                setEmployeeSlots(normalizedEmployeeSlots)
                 
-                // Extract unique slots
-                const uniqueSlots = new Map<string, Slot>()
-                empSlotsData.forEach((es: any) => {
+                const uniqueSlots = new Map<string, GiftSlot>()
+                normalizedEmployeeSlots.forEach((es: any) => {
                     if (es.slot) uniqueSlots.set(es.slot.id, es.slot)
                 })
                 setSlots(Array.from(uniqueSlots.values()))
@@ -200,7 +218,7 @@ export default function Reports() {
       const q = searchQuery.toLowerCase()
       data = data.filter(e => 
         e.employee_number.toLowerCase().includes(q) || 
-        e.name.toLowerCase().includes(q)
+        getEmployeeName(e).toLowerCase().includes(q)
       )
     }
 
@@ -226,7 +244,15 @@ export default function Reports() {
     const record = issuedRecords[empId]
     if (!record) return ''
     const sels = issuedSelections[record.id] || []
-    return sels.map(s => s.item_name).join(', ')
+    return sels
+      .map((s) => {
+        const slotName = s.slot?.name ?? ''
+        const item = s.gift_option?.item_name ?? ''
+        if (slotName && item) return `${slotName}: ${item}`
+        return item || slotName
+      })
+      .filter(Boolean)
+      .join(', ')
   }
 
   // --- Export ---
@@ -234,6 +260,14 @@ export default function Reports() {
     const wb = XLSX.utils.book_new()
     const issuingName = issuings.find(i => i.id === selectedIssuingId)?.name || 'Issuing'
     const dateStr = new Date().toISOString().split('T')[0]
+
+    const allExtraKeys = Array.from(
+      new Set(
+        employees.flatMap((e) => Object.keys((e.extra_data ?? {}) as Record<string, any>)),
+      ),
+    ).sort()
+
+    const fileSafeIssuing = issuingName.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '')
 
     // 1. Totals Sheet
     const totalsData = [
@@ -255,8 +289,12 @@ export default function Reports() {
       .filter(e => !issuedRecords[e.id])
       .map(e => ({
         'Employee Number': e.employee_number,
-        'Name': e.name,
-        'Extra Data': formatExtraData(e.extra_data)
+        'First Name': e.first_name ?? '',
+        'Last Name': e.last_name ?? '',
+        ...allExtraKeys.reduce((acc, k) => {
+          ;(acc as any)[k] = (e.extra_data as any)?.[k] ?? ''
+          return acc
+        }, {} as Record<string, any>),
       }))
     const wsOutstanding = XLSX.utils.json_to_sheet(outstandingRows)
     XLSX.utils.book_append_sheet(wb, wsOutstanding, 'Outstanding')
@@ -268,10 +306,14 @@ export default function Reports() {
         const record = issuedRecords[e.id]
         return {
           'Employee Number': e.employee_number,
-          'Name': e.name,
+          'First Name': e.first_name ?? '',
+          'Last Name': e.last_name ?? '',
           'Date Collected': new Date(record.issued_at).toLocaleString(),
           'Items Received': getItemsReceived(e.id),
-          'Extra Data': formatExtraData(e.extra_data)
+          ...allExtraKeys.reduce((acc, k) => {
+            ;(acc as any)[k] = (e.extra_data as any)?.[k] ?? ''
+            return acc
+          }, {} as Record<string, any>),
         }
       })
     const wsCollected = XLSX.utils.json_to_sheet(collectedRows)
@@ -282,18 +324,22 @@ export default function Reports() {
         const record = issuedRecords[e.id]
         return {
           'Employee Number': e.employee_number,
-          'Name': e.name,
+          'First Name': e.first_name ?? '',
+          'Last Name': e.last_name ?? '',
           'Status': record ? 'Issued' : 'Pending',
           'Date Collected': record ? new Date(record.issued_at).toLocaleString() : '',
           'Items Received': getItemsReceived(e.id),
-          'Extra Data': formatExtraData(e.extra_data)
+          ...allExtraKeys.reduce((acc, k) => {
+            ;(acc as any)[k] = (e.extra_data as any)?.[k] ?? ''
+            return acc
+          }, {} as Record<string, any>),
         }
     })
     const wsFull = XLSX.utils.json_to_sheet(fullRows)
     XLSX.utils.book_append_sheet(wb, wsFull, 'Full Data')
 
     // Save
-    XLSX.writeFile(wb, `${issuingName}_${dateStr}.xlsx`)
+    XLSX.writeFile(wb, `${fileSafeIssuing}_${dateStr}.xlsx`)
   }
 
   // --- Render ---
@@ -529,7 +575,7 @@ export default function Reports() {
                           return (
                             <tr key={e.id} className="hover:bg-gray-50">
                               <td className="px-4 py-3 font-medium text-gray-900">{e.employee_number}</td>
-                              <td className="px-4 py-3 text-gray-800">{e.name}</td>
+                              <td className="px-4 py-3 text-gray-800">{getEmployeeName(e)}</td>
                               
                               {activeTab !== 'outstanding' && (
                                 <td className="px-4 py-3 text-gray-600 text-sm">

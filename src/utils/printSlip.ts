@@ -3,6 +3,8 @@ import type { Employee } from '../types'
 interface PrintSlipProps {
   companyName: string
   issuingName: string
+  mineName: string
+  issuedAt: string
   employee: Employee
   items: { slotName: string; itemName: string; isChoice: boolean }[]
 }
@@ -10,6 +12,8 @@ interface PrintSlipProps {
 export const printSlip = ({
   companyName,
   issuingName,
+  mineName,
+  issuedAt,
   employee,
   items,
 }: PrintSlipProps) => {
@@ -19,7 +23,9 @@ export const printSlip = ({
     return
   }
 
-  const now = new Date().toLocaleString()
+  const now = new Date(issuedAt).toLocaleString()
+
+  const fullName = `${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim() || '—'
 
   const extraDataHtml = employee.extra_data
     ? Object.entries(employee.extra_data)
@@ -78,6 +84,14 @@ export const printSlip = ({
           font-size: 16px;
           font-weight: normal;
           margin: 0 0 20px 0;
+          text-align: center;
+          color: #666;
+        }
+
+        .subline {
+          font-size: 14px;
+          font-weight: normal;
+          margin: -14px 0 20px 0;
           text-align: center;
           color: #666;
         }
@@ -175,16 +189,15 @@ export const printSlip = ({
             margin: 0;
           }
           .slip-container {
-            border: none;
+            border: 1px solid #ccc;
             padding: 20px;
             width: 100%;
             max-width: none;
           }
           @page {
             size: A4;
-            margin: 0;
+            margin: 12mm;
           }
-          /* Hide browser UI elements if possible (handled by browser settings mostly) */
         }
       </style>
     </head>
@@ -192,13 +205,14 @@ export const printSlip = ({
       <div class="slip-container">
         <h1>${companyName}</h1>
         <h2>${issuingName}</h2>
+        <div class="subline">${mineName}</div>
         
         <div class="divider"></div>
 
         <div class="section">
           <div class="section-title">Employee Details</div>
           <div class="detail-row"><span class="label">Employee Number:</span> <span class="value">${employee.employee_number}</span></div>
-          <div class="detail-row"><span class="label">Name:</span> <span class="value">${employee.name}</span></div>
+          <div class="detail-row"><span class="label">Name:</span> <span class="value">${fullName}</span></div>
           ${extraDataHtml}
         </div>
 
@@ -223,11 +237,12 @@ export const printSlip = ({
         </div>
       </div>
       <script>
+        window.onafterprint = function() {
+          window.close();
+        }
         window.onload = function() {
           window.print();
-          setTimeout(function() {
-             window.close();
-          }, 500);
+          setTimeout(function() { window.close(); }, 2000);
         }
       </script>
     </body>

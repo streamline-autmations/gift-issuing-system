@@ -23,7 +23,7 @@ type Issuing = {
 
 type GiftOption = {
   id: string
-  name: string
+  item_name: string
   created_at: string
 }
 
@@ -259,7 +259,7 @@ function IssuingsSection() {
     mutationFn: async () => {
       const { error } = await supabase
         .from('issuings')
-        .insert({ company_id: companyId, name: name.trim(), mine_name: mineName.trim(), is_active: true })
+        .insert({ id: crypto.randomUUID(), company_id: companyId, name: name.trim(), mine_name: mineName.trim(), is_active: true })
       if (error) throw error
     },
     onSuccess: async () => {
@@ -436,7 +436,7 @@ function GiftsSection() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('gift_slots')
-        .select('id, issuing_id, name, is_choice, created_at, gift_options(id, name, created_at)')
+        .select('id, issuing_id, company_id, name, is_choice, created_at, gift_options(id, item_name, created_at)')
         .eq('issuing_id', issuingId)
         .order('created_at', { ascending: true })
 
@@ -457,7 +457,7 @@ function GiftsSection() {
     mutationFn: async () => {
       const { error } = await supabase
         .from('gift_slots')
-        .insert({ issuing_id: issuingId, name: slotName.trim(), is_choice: slotIsChoice })
+        .insert({ id: crypto.randomUUID(), issuing_id: issuingId, company_id: companyId, name: slotName.trim(), is_choice: slotIsChoice })
       if (error) throw error
     },
     onSuccess: async () => {
@@ -470,7 +470,9 @@ function GiftsSection() {
 
   const addOptionMutation = useMutation({
     mutationFn: async ({ slotId, name }: { slotId: string; name: string }) => {
-      const { error } = await supabase.from('gift_options').insert({ gift_slot_id: slotId, name: name.trim() })
+      const { error } = await supabase
+        .from('gift_options')
+        .insert({ id: crypto.randomUUID(), slot_id: slotId, company_id: companyId, item_name: name.trim() })
       if (error) throw error
     },
     onSuccess: async () => {
@@ -575,7 +577,7 @@ function GiftsSection() {
                       {options.length ? (
                         options.map((opt) => (
                           <div key={opt.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-                            <div className="text-sm font-medium text-slate-900">{opt.name}</div>
+                            <div className="text-sm font-medium text-slate-900">{opt.item_name}</div>
                             <div className="text-xs text-slate-500">{formatDate(opt.created_at)}</div>
                           </div>
                         ))
