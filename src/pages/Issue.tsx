@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import type { Employee, EmployeeSlot, GiftOption, IssuedRecord, IssuedSelection, Issuing } from '@/types'
 import { printSlip } from '@/utils/printSlip'
-import { AlertCircle, CheckCircle, History, Search } from 'lucide-react'
+import { AlertCircle, CheckCircle, History, Loader2, Search } from 'lucide-react'
 
 type SlotView = {
   employeeSlot: EmployeeSlot
@@ -33,6 +33,9 @@ export default function Issue() {
   const [employee, setEmployee] = useState<Employee | null>(null)
   const [employeeSlots, setEmployeeSlots] = useState<EmployeeSlot[]>([])
   const [alreadyIssued, setAlreadyIssued] = useState<IssuedRecord | null>(null)
+  const [issuedSelections, setIssuedSelections] = useState<IssuedSelection[]>([])
+  const [issuedSelectionsLoading, setIssuedSelectionsLoading] = useState(false)
+  const [issuedDetailsOpen, setIssuedDetailsOpen] = useState(false)
 
   const [history, setHistory] = useState<IssuedRecord[]>([])
   const [showHistory, setShowHistory] = useState(false)
@@ -92,12 +95,36 @@ export default function Issue() {
     setEmployee(null)
     setEmployeeSlots([])
     setAlreadyIssued(null)
+    setIssuedSelections([])
+    setIssuedSelectionsLoading(false)
+    setIssuedDetailsOpen(false)
     setChecks({})
     setChoices({})
     setError(null)
     setEmployeeNumber('')
     setShowHistory(false)
     inputRef.current?.focus()
+  }
+
+  const loadIssuedSelections = async (issuedRecordId: string) => {
+    setIssuedSelectionsLoading(true)
+    const { data, error } = await supabase
+      .from('issued_selections')
+      .select(
+        'id, issued_record_id, slot_id, gift_option_id, company_id, slot:gift_slots!issued_selections_slot_id_fkey(name, is_choice), gift_option:gift_options!issued_selections_gift_option_id_fkey(item_name)',
+      )
+      .eq('issued_record_id', issuedRecordId)
+
+    setIssuedSelectionsLoading(false)
+    if (error) return
+
+    const normalized = (data ?? []).map((raw: any) => ({
+      ...raw,
+      slot: Array.isArray(raw.slot) ? raw.slot[0] : raw.slot,
+      gift_option: Array.isArray(raw.gift_option) ? raw.gift_option[0] : raw.gift_option,
+    })) as IssuedSelection[]
+
+    setIssuedSelections(normalized)
   }
 
   const fetchHistory = async () => {
@@ -179,6 +206,9 @@ export default function Issue() {
     setEmployee(null)
     setEmployeeSlots([])
     setAlreadyIssued(null)
+    setIssuedSelections([])
+    setIssuedSelectionsLoading(false)
+    setIssuedDetailsOpen(false)
     setChecks({})
     setChoices({})
     setShowHistory(false)
@@ -411,6 +441,45 @@ export default function Issue() {
                 ALREADY ISSUED
               </div>
               <p className="text-gray-600">Issued on {new Date(alreadyIssued.issued_at).toLocaleString()}</p>
+
+              <div className="mt-6 flex justify-center">
+                <button
+                  type="button"
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                  onClick={async () => {
+                    const nextOpen = !issuedDetailsOpen
+                    setIssuedDetailsOpen(nextOpen)
+                    if (nextOpen && issuedSelections.length === 0) {
+                      await loadIssuedSelections(alreadyIssued.id)
+                    }
+                  }}
+                >
+                  {issuedDetailsOpen ? 'Hide details' : 'View history details'}
+                </button>
+              </div>
+
+              {issuedDetailsOpen ? (
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-left">
+                  <div className="text-sm font-semibold text-slate-900">Collected items</div>
+                  {issuedSelectionsLoading ? (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-slate-600">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading...
+                    </div>
+                  ) : issuedSelections.length ? (
+                    <div className="mt-3 space-y-2">
+                      {issuedSelections.map((s) => (
+                        <div key={s.id} className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
+                          <div className="text-sm font-medium text-slate-900">{s.slot?.name ?? 'Slot'}</div>
+                          <div className="text-sm text-slate-700">{s.gift_option?.item_name ?? ''}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-sm text-slate-600">No selection details found.</div>
+                  )}
+                </div>
+              ) : null}
             </div>
           ) : employee ? (
             <div className="space-y-6">

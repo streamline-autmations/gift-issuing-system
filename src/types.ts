@@ -33,6 +33,7 @@ export interface GiftOption {
   slot_id: string
   company_id: string
   item_name: string
+  stock_quantity?: number | null
   created_at?: string
 }
 

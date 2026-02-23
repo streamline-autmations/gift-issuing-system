@@ -29,6 +29,11 @@ type ParsedExcel = {
   rows: Record<string, unknown>[]
 }
 
+type ParsedWorkbook = {
+  sheetNames: string[]
+  sheets: Record<string, ParsedExcel>
+}
+
 type ColumnMapping = {
   employee_number: string
   first_name: string | null
@@ -45,6 +50,10 @@ function normalizeCell(value: unknown) {
   if (typeof value === 'number') return String(value)
   if (typeof value === 'boolean') return value ? 'true' : 'false'
   return String(value).trim()
+}
+
+function normalizeKey(value: unknown) {
+  return normalizeCell(value).toLowerCase().replace(/[^a-z0-9]+/g, '')
 }
 
 function safeHeader(value: unknown, fallback: string) {
@@ -72,13 +81,7 @@ function StepPill({ active, label }: { active: boolean; label: string }) {
   )
 }
 
-function TablePreview({
-  headers,
-  rows,
-}: {
-  headers: string[]
-  rows: Record<string, unknown>[]
-}) {
+function TablePreview({ headers, rows }: { headers: string[]; rows: Record<string, unknown>[] }) {
   return (
     <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
       <table className="min-w-full text-left text-sm">
@@ -111,6 +114,7 @@ function ExcelImport() {
   const qc = useQueryClient()
 
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1)
+  const [importMode, setImportMode] = useState<'table' | 'giftSheets'>('table')
 
   const [companyId, setCompanyId] = useState('')
   const [issuingId, setIssuingId] = useState('')
@@ -152,12 +156,8 @@ function ExcelImport() {
     },
   })
 
-  useEffect(() => {
-    setIssuingId('')
-    setStep(1)
-  }, [companyId])
-
-  const [excel, setExcel] = useState<ParsedExcel | null>(null)
+  const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null)
+  const [selectedSheet, setSelectedSheet] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [columnMapping, setColumnMapping] = useState<ColumnMapping>({
@@ -167,6 +167,28 @@ function ExcelImport() {
   })
 
   const [slotRules, setSlotRules] = useState<Record<string, SlotRule>>({})
+  const [sheetSlotMap, setSheetSlotMap] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    setIssuingId('')
+    setStep(1)
+    setWorkbook(null)
+    setSelectedSheet('')
+    setColumnMapping({ employee_number: '', first_name: null, last_name: null })
+    setSlotRules({})
+    setSheetSlotMap({})
+    setImportMode('table')
+  }, [companyId])
+
+  useEffect(() => {
+    setWorkbook(null)
+    setSelectedSheet('')
+    setColumnMapping({ employee_number: '', first_name: null, last_name: null })
+    setSlotRules({})
+    setSheetSlotMap({})
+    setImportMode('table')
+    if (step !== 1) setStep(1)
+  }, [issuingId])
 
   useEffect(() => {
     const slots = giftSlotsQuery.data ?? []
@@ -181,25 +203,50 @@ function ExcelImport() {
     })
   }, [giftSlotsQuery.data])
 
-  async function parseExcelFile(file: File) {
+  useEffect(() => {
+    if (!workbook) return
+    if (importMode !== 'giftSheets') return
+    const slots = giftSlotsQuery.data ?? []
+    if (!slots.length) return
+
+    setSheetSlotMap((prev) => {
+      const next = { ...prev }
+      for (const sheetName of workbook.sheetNames) {
+        if (next[sheetName]) continue
+        const match = slots.find((s) => normalizeKey(s.name) === normalizeKey(sheetName))
+        next[sheetName] = match?.id ?? ''
+      }
+      return next
+    })
+  }, [workbook, importMode, giftSlotsQuery.data])
+
+  async function parseWorkbook(file: File) {
     const buffer = await file.arrayBuffer()
     const wb = XLSX.read(buffer, { type: 'array' })
-    const firstSheetName = wb.SheetNames[0]
-    const sheet = wb.Sheets[firstSheetName]
-    const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][]
+    const sheetNames = wb.SheetNames.slice()
+    const sheets: Record<string, ParsedExcel> = {}
 
-    if (!raw.length) return { headers: [], rows: [] } as ParsedExcel
+    for (const sheetName of sheetNames) {
+      const sheet = wb.Sheets[sheetName]
+      const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][]
+      if (!raw.length) {
+        sheets[sheetName] = { headers: [], rows: [] }
+        continue
+      }
 
-    const headerRow = raw[0] ?? []
-    const headers = headerRow.map((h, i) => safeHeader(h, `Column ${i + 1}`))
+      const headerRow = raw[0] ?? []
+      const headers = headerRow.map((h, i) => safeHeader(h, `Column ${i + 1}`))
 
-    const rows = raw.slice(1).map((r) => {
-      const obj: Record<string, unknown> = {}
-      for (let i = 0; i < headers.length; i++) obj[headers[i]] = r?.[i] ?? ''
-      return obj
-    })
+      const rows = raw.slice(1).map((r) => {
+        const obj: Record<string, unknown> = {}
+        for (let i = 0; i < headers.length; i++) obj[headers[i]] = r?.[i] ?? ''
+        return obj
+      })
 
-    return { headers, rows }
+      sheets[sheetName] = { headers, rows }
+    }
+
+    return { sheetNames, sheets } as ParsedWorkbook
   }
 
   function onFiles(files: FileList | null) {
@@ -208,30 +255,36 @@ function ExcelImport() {
 
     const name = file.name.toLowerCase()
     if (!(name.endsWith('.xlsx') || name.endsWith('.xls'))) {
-      setExcel(null)
+      setWorkbook(null)
       return
     }
 
-    parseExcelFile(file)
+    parseWorkbook(file)
       .then((parsed) => {
-        setExcel(parsed)
+        setWorkbook(parsed)
+        const first = parsed.sheetNames[0] ?? ''
+        setSelectedSheet(first)
         setColumnMapping({ employee_number: '', first_name: null, last_name: null })
-        setStep(3)
+        setSheetSlotMap({})
       })
       .catch(() => {
-        setExcel(null)
+        setWorkbook(null)
       })
   }
 
-  const headers = excel?.headers ?? []
-  const rows = excel?.rows ?? []
+  const sheetData = useMemo(() => {
+    if (!workbook) return null
+    const name = selectedSheet || workbook.sheetNames[0] || ''
+    if (!name) return null
+    return workbook.sheets[name] ?? null
+  }, [workbook, selectedSheet])
 
-  const canGoStep2 = Boolean(companyId && issuingId)
-  const canGoStep3 = canGoStep2 && Boolean(excel)
-  const canGoStep4 = canGoStep3 && Boolean(columnMapping.employee_number)
+  const headers = sheetData?.headers ?? []
+  const rows = sheetData?.rows ?? []
 
   const resolvedPreview = useMemo(() => {
-    if (!excel) return [] as Array<{ employee_number: string; first_name: string; last_name: string; slots: string[] }>
+    if (!sheetData) return [] as Array<{ employee_number: string; first_name: string; last_name: string; slots: string[] }>
+    if (!columnMapping.employee_number) return [] as Array<{ employee_number: string; first_name: string; last_name: string; slots: string[] }>
     const slotNameById = new Map((giftSlotsQuery.data ?? []).map((s) => [s.id, s.name]))
     const rules = slotRules
     const employeeCol = columnMapping.employee_number
@@ -253,29 +306,134 @@ function ExcelImport() {
         }
         const cell = normalizeCell(r[rule.column])
         const expected = normalizeCell(rule.value)
-        if (cell && expected && cell.toLowerCase() === expected.toLowerCase()) {
+        if (cell && expected && normalizeKey(cell) === normalizeKey(expected)) {
           slots.push(slotNameById.get(s.id) ?? s.id)
         }
       }
       return { employee_number, first_name, last_name, slots }
     })
-  }, [excel, rows, giftSlotsQuery.data, slotRules, columnMapping])
+  }, [sheetData, rows, giftSlotsQuery.data, slotRules, columnMapping])
 
   const importMutation = useMutation({
     mutationFn: async () => {
-      if (!excel) throw new Error('No file')
+      if (!workbook) throw new Error('No file')
       if (!companyId || !issuingId) throw new Error('Select company and issuing')
+
+      if (importMode === 'giftSheets') {
+        const chosen = Object.entries(sheetSlotMap).filter(([, slotId]) => Boolean(slotId))
+        if (chosen.length === 0) throw new Error('Map at least one sheet to a gift slot.')
+
+        const keyToOriginal = new Map<string, string>()
+        const sheetEmployeeNumbers = new Map<string, string[]>() // sheetName -> employee_numbers (original)
+
+        for (const [sheetName] of chosen) {
+          const parsed = workbook.sheets[sheetName]
+          const list: string[] = []
+
+          const headerCandidate = normalizeCell(parsed.headers[0] ?? '')
+          if (headerCandidate && /[0-9]/.test(headerCandidate) && headerCandidate.length <= 20) {
+            const key = headerCandidate.toLowerCase()
+            if (!keyToOriginal.has(key)) keyToOriginal.set(key, headerCandidate)
+            list.push(headerCandidate)
+          }
+
+          const firstHeader = parsed.headers[0]
+          for (const r of parsed.rows) {
+            const rawVal = firstHeader ? r[firstHeader] : undefined
+            const empNum = normalizeCell(rawVal)
+            if (!empNum) continue
+            const key = empNum.toLowerCase()
+            if (!keyToOriginal.has(key)) keyToOriginal.set(key, empNum)
+            list.push(empNum)
+          }
+
+          sheetEmployeeNumbers.set(sheetName, list)
+        }
+
+        const allEmployeeNumbersOriginal = Array.from(keyToOriginal.values())
+
+        const existingMap = new Map<string, { id: string; employee_number: string }>()
+        for (const c of chunk(allEmployeeNumbersOriginal, 500)) {
+          const { data, error } = await supabase
+            .from('employees')
+            .select('id, employee_number')
+            .eq('issuing_id', issuingId)
+            .in('employee_number', c)
+          if (error) throw error
+          for (const row of data ?? []) existingMap.set(String(row.employee_number).toLowerCase(), { id: row.id, employee_number: row.employee_number })
+        }
+
+        const toInsert = allEmployeeNumbersOriginal
+          .filter((empNum) => !existingMap.has(empNum.toLowerCase()))
+          .map((empNum) => ({ id: crypto.randomUUID(), employee_number: empNum }))
+
+        const insertedEmployees: Array<{ id: string; employee_number: string }> = []
+        for (const batch of chunk(toInsert, 500)) {
+          const payload = batch.map((b) => ({
+            id: b.id,
+            company_id: companyId,
+            issuing_id: issuingId,
+            employee_number: b.employee_number,
+            first_name: null,
+            last_name: null,
+            extra_data: {},
+          }))
+          const { data, error } = await supabase
+            .from('employees')
+            .upsert(payload, { onConflict: 'issuing_id,employee_number', ignoreDuplicates: true })
+            .select('id, employee_number')
+          if (error) throw error
+          for (const e of data ?? []) insertedEmployees.push({ id: e.id, employee_number: e.employee_number })
+        }
+
+        const allEmployeesByNumber = new Map<string, { id: string; employee_number: string }>(existingMap)
+        for (const e of insertedEmployees) allEmployeesByNumber.set(String(e.employee_number).toLowerCase(), e)
+
+        const employeeSlotsRows: Array<{ id: string; employee_id: string; slot_id: string; company_id: string }> = []
+        for (const [sheetName, list] of sheetEmployeeNumbers.entries()) {
+          const slotId = sheetSlotMap[sheetName]
+          if (!slotId) continue
+          for (const empNum of list) {
+            const emp = allEmployeesByNumber.get(empNum.toLowerCase())
+            if (!emp) continue
+            employeeSlotsRows.push({ id: crypto.randomUUID(), employee_id: emp.id, slot_id: slotId, company_id: companyId })
+          }
+        }
+
+        for (const batch of chunk(employeeSlotsRows, 1000)) {
+          const { error } = await supabase
+            .from('employee_slots')
+            .upsert(batch, { onConflict: 'employee_id,slot_id', ignoreDuplicates: true })
+          if (error) throw error
+        }
+
+        await qc.invalidateQueries({ queryKey: ['employees', issuingId] })
+
+        return {
+          foundInExcel: allEmployeeNumbersOriginal.length,
+          imported: insertedEmployees.length,
+          skippedDuplicatesInFile: 0,
+          skippedDuplicatesExisting: existingMap.size,
+          skippedMissingEmployeeNumber: 0,
+        }
+      }
+
+      if (!sheetData) throw new Error('No sheet selected')
       if (!columnMapping.employee_number) throw new Error('Map employee_number')
 
       const employeeCol = columnMapping.employee_number
       const firstCol = columnMapping.first_name
       const lastCol = columnMapping.last_name
-
       const mappedCols = new Set([employeeCol, firstCol ?? '', lastCol ?? ''].filter(Boolean))
 
       const seen = new Set<string>()
-      const normalizedRows: Array<{ employee_number: string; first_name: string | null; last_name: string | null; extra_data: Record<string, unknown> }>
-        = []
+      const normalizedRows: Array<{
+        employee_number: string
+        first_name: string | null
+        last_name: string | null
+        extra_data: Record<string, unknown>
+        sourceRow: Record<string, unknown>
+      }> = []
       let skippedDuplicatesInFile = 0
       let skippedMissingEmployeeNumber = 0
 
@@ -303,6 +461,7 @@ function ExcelImport() {
           first_name: firstCol ? normalizeCell(r[firstCol]) || null : null,
           last_name: lastCol ? normalizeCell(r[lastCol]) || null : null,
           extra_data,
+          sourceRow: r,
         })
       }
 
@@ -333,7 +492,6 @@ function ExcelImport() {
       }))
 
       const insertedEmployees: Array<{ id: string; employee_number: string }> = []
-
       for (const batch of chunk(employeesToInsert, 500)) {
         const { data, error } = await supabase
           .from('employees')
@@ -343,35 +501,25 @@ function ExcelImport() {
         for (const e of data ?? []) insertedEmployees.push({ id: e.id, employee_number: e.employee_number })
       }
 
-      const slotById = new Map((giftSlotsQuery.data ?? []).map((s) => [s.id, s]))
-      const rowByEmployeeNumber = new Map(normalizedRows.map((r) => [r.employee_number.toLowerCase(), r]))
+      const rowByEmployeeNumber = new Map(normalizedRows.map((r) => [r.employee_number.toLowerCase(), r.sourceRow]))
 
       const employeeSlotsRows: Array<{ id: string; employee_id: string; slot_id: string; company_id: string }> = []
-
       for (const emp of insertedEmployees) {
-        const src = rowByEmployeeNumber.get(emp.employee_number.toLowerCase())
-        if (!src) continue
+        const sourceRow = rowByEmployeeNumber.get(emp.employee_number.toLowerCase())
+        if (!sourceRow) continue
 
         for (const [slotId, rule] of Object.entries(slotRules)) {
-          const slot = slotById.get(slotId)
-          if (!slot) continue
-
           let qualifies = false
           if (rule.mode === 'all') {
             qualifies = true
           } else {
-            const cell = normalizeCell((excel.rows.find((r) => normalizeCell(r[employeeCol]).toLowerCase() === emp.employee_number.toLowerCase()) ?? {})[rule.column])
+            const cell = normalizeCell(sourceRow[rule.column])
             const expected = normalizeCell(rule.value)
-            qualifies = Boolean(cell && expected && cell.toLowerCase() === expected.toLowerCase())
+            qualifies = Boolean(cell && expected && normalizeKey(cell) === normalizeKey(expected))
           }
 
           if (!qualifies) continue
-          employeeSlotsRows.push({
-            id: crypto.randomUUID(),
-            employee_id: emp.id,
-            slot_id: slotId,
-            company_id: companyId,
-          })
+          employeeSlotsRows.push({ id: crypto.randomUUID(), employee_id: emp.id, slot_id: slotId, company_id: companyId })
         }
       }
 
@@ -395,6 +543,13 @@ function ExcelImport() {
   })
 
   const summary = importMutation.data
+  const canGoStep2 = Boolean(companyId && issuingId)
+  const canGoStep3 = Boolean(workbook)
+  const canGoStep4 = importMode === 'giftSheets' ? true : Boolean(columnMapping.employee_number)
+  const canConfirm =
+    importMode === 'giftSheets'
+      ? Object.values(sheetSlotMap).some(Boolean) && !importMutation.isPending
+      : Boolean(columnMapping.employee_number) && !importMutation.isPending
 
   return (
     <div className="space-y-5">
@@ -463,7 +618,32 @@ function ExcelImport() {
           <div className="space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Upload Excel file</h2>
-              <p className="text-sm text-slate-600">Upload a .xlsx or .xls file. A preview will show before import.</p>
+              <p className="text-sm text-slate-600">Upload a .xlsx or .xls file.</p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={
+                  importMode === 'table'
+                    ? 'rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white'
+                    : 'rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700'
+                }
+                onClick={() => setImportMode('table')}
+              >
+                Employee table
+              </button>
+              <button
+                type="button"
+                className={
+                  importMode === 'giftSheets'
+                    ? 'rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white'
+                    : 'rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700'
+                }
+                onClick={() => setImportMode('giftSheets')}
+              >
+                Gift sheets
+              </button>
             </div>
 
             <div
@@ -489,10 +669,33 @@ function ExcelImport() {
               onChange={(e) => onFiles(e.target.files)}
             />
 
-            {excel ? (
+            {workbook && importMode === 'table' ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Sheet</label>
+                <select
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
+                  value={selectedSheet}
+                  onChange={(e) => setSelectedSheet(e.target.value)}
+                >
+                  {workbook.sheetNames.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            {sheetData && importMode === 'table' ? (
               <div className="space-y-3">
                 <div className="text-sm font-semibold text-slate-900">Preview (first 5 rows)</div>
                 <TablePreview headers={headers} rows={rows.slice(0, 5)} />
+              </div>
+            ) : null}
+
+            {workbook && importMode === 'giftSheets' ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                Workbook sheets found: {workbook.sheetNames.length}. In the next step you’ll map each sheet to a gift slot.
               </div>
             ) : null}
 
@@ -508,7 +711,7 @@ function ExcelImport() {
                 type="button"
                 disabled={!canGoStep3}
                 className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-                onClick={() => setStep(3)}
+                onClick={() => setStep(importMode === 'table' ? 3 : 4)}
               >
                 Continue
               </button>
@@ -523,8 +726,12 @@ function ExcelImport() {
               <p className="text-sm text-slate-600">Choose which Excel columns map to employee fields.</p>
             </div>
 
-            {!excel ? (
-              <div className="text-sm text-slate-600">Upload a file first.</div>
+            {importMode === 'giftSheets' ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                This step is skipped in Gift sheets mode.
+              </div>
+            ) : !sheetData ? (
+              <div className="text-sm text-slate-600">Upload a file and select a sheet first.</div>
             ) : (
               <div className="grid gap-4 md:grid-cols-3">
                 <div>
@@ -534,9 +741,7 @@ function ExcelImport() {
                   <select
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
                     value={columnMapping.employee_number}
-                    onChange={(e) =>
-                      setColumnMapping((p) => ({ ...p, employee_number: e.target.value }))
-                    }
+                    onChange={(e) => setColumnMapping((p) => ({ ...p, employee_number: e.target.value }))}
                   >
                     <option value="">Select column...</option>
                     {headers.map((h) => (
@@ -552,9 +757,7 @@ function ExcelImport() {
                   <select
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
                     value={columnMapping.first_name ?? ''}
-                    onChange={(e) =>
-                      setColumnMapping((p) => ({ ...p, first_name: e.target.value || null }))
-                    }
+                    onChange={(e) => setColumnMapping((p) => ({ ...p, first_name: e.target.value || null }))}
                   >
                     <option value="">Not mapped</option>
                     {headers.map((h) => (
@@ -570,9 +773,7 @@ function ExcelImport() {
                   <select
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
                     value={columnMapping.last_name ?? ''}
-                    onChange={(e) =>
-                      setColumnMapping((p) => ({ ...p, last_name: e.target.value || null }))
-                    }
+                    onChange={(e) => setColumnMapping((p) => ({ ...p, last_name: e.target.value || null }))}
                   >
                     <option value="">Not mapped</option>
                     {headers.map((h) => (
@@ -609,11 +810,42 @@ function ExcelImport() {
           <div className="space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Map gift slots</h2>
-              <p className="text-sm text-slate-600">Define how employees qualify for each slot.</p>
+              <p className="text-sm text-slate-600">
+                {importMode === 'table' ? 'Define how employees qualify for each slot.' : 'Map each sheet to a gift slot.'}
+              </p>
             </div>
 
             {giftSlotsQuery.isLoading ? (
               <div className="text-sm text-slate-600">Loading gift slots...</div>
+            ) : importMode === 'giftSheets' ? (
+              workbook?.sheetNames?.length ? (
+                <div className="space-y-3">
+                  {workbook.sheetNames.map((sheetName) => (
+                    <div key={sheetName} className="grid gap-3 rounded-xl border border-slate-200 p-4 md:grid-cols-[1fr_280px]">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">{sheetName}</div>
+                        <div className="text-xs text-slate-600">Rows: {(workbook.sheets[sheetName]?.rows ?? []).length}</div>
+                      </div>
+                      <div>
+                        <select
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                          value={sheetSlotMap[sheetName] ?? ''}
+                          onChange={(e) => setSheetSlotMap((p) => ({ ...p, [sheetName]: e.target.value }))}
+                        >
+                          <option value="">Ignore this sheet</option>
+                          {(giftSlotsQuery.data ?? []).map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-slate-600">Upload a workbook first.</div>
+              )
             ) : giftSlotsQuery.data?.length ? (
               <div className="space-y-4">
                 {giftSlotsQuery.data.map((slot) => {
@@ -655,9 +887,7 @@ function ExcelImport() {
                           />
                           <div className="flex-1">
                             <div className="text-sm font-medium text-slate-900">Qualification column</div>
-                            <div className="text-xs text-slate-600">
-                              Use a column in the Excel to decide who qualifies.
-                            </div>
+                            <div className="text-xs text-slate-600">Use a column in the Excel to decide who qualifies.</div>
 
                             {rule.mode === 'column' ? (
                               <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -711,14 +941,16 @@ function ExcelImport() {
               <button
                 type="button"
                 className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                onClick={() => setStep(3)}
+                onClick={() => setStep(importMode === 'table' ? 3 : 2)}
+                disabled={importMutation.isPending}
               >
                 Back
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
                 onClick={() => setStep(5)}
+                disabled={importMode === 'giftSheets' ? !Object.values(sheetSlotMap).some(Boolean) : false}
               >
                 Continue
               </button>
@@ -733,55 +965,37 @@ function ExcelImport() {
               <p className="text-sm text-slate-600">Review the import before committing changes.</p>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-semibold text-slate-600">Employees found</div>
-                <div className="mt-1 text-2xl font-bold text-slate-900">{rows.length}</div>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-semibold text-slate-600">Mapped columns</div>
-                <div className="mt-1 text-sm font-semibold text-slate-900">
-                  {columnMapping.employee_number || 'employee_number (missing)'}
-                </div>
-                <div className="mt-1 text-xs text-slate-700">
-                  {columnMapping.first_name ? `first_name → ${columnMapping.first_name}` : 'first_name → (not mapped)'}
-                </div>
-                <div className="mt-1 text-xs text-slate-700">
-                  {columnMapping.last_name ? `last_name → ${columnMapping.last_name}` : 'last_name → (not mapped)'}
-                </div>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-semibold text-slate-600">Gift slots</div>
-                <div className="mt-1 text-sm font-semibold text-slate-900">{(giftSlotsQuery.data ?? []).length}</div>
-                <div className="mt-1 text-xs text-slate-700">Configured rules will be applied on import.</div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="text-sm font-semibold text-slate-900">Resolved preview (first 10 rows)</div>
-              <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-slate-700">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">Employee #</th>
-                      <th className="px-4 py-3 font-semibold">First name</th>
-                      <th className="px-4 py-3 font-semibold">Last name</th>
-                      <th className="px-4 py-3 font-semibold">Qualifies for slots</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {resolvedPreview.map((r, idx) => (
-                      <tr key={idx} className="border-t border-slate-100">
-                        <td className="px-4 py-3 font-medium text-slate-900">{r.employee_number}</td>
-                        <td className="px-4 py-3 text-slate-700">{r.first_name}</td>
-                        <td className="px-4 py-3 text-slate-700">{r.last_name}</td>
-                        <td className="px-4 py-3 text-slate-700">{r.slots.join(', ') || '-'}</td>
+            {importMode === 'table' ? (
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-slate-900">Resolved preview (first 10 rows)</div>
+                <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="bg-slate-50 text-slate-700">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Employee #</th>
+                        <th className="px-4 py-3 font-semibold">First name</th>
+                        <th className="px-4 py-3 font-semibold">Last name</th>
+                        <th className="px-4 py-3 font-semibold">Qualifies for slots</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {resolvedPreview.map((r, idx) => (
+                        <tr key={idx} className="border-t border-slate-100">
+                          <td className="px-4 py-3 font-medium text-slate-900">{r.employee_number}</td>
+                          <td className="px-4 py-3 text-slate-700">{r.first_name}</td>
+                          <td className="px-4 py-3 text-slate-700">{r.last_name}</td>
+                          <td className="px-4 py-3 text-slate-700">{r.slots.join(', ') || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                Gift sheets mapped: {Object.values(sheetSlotMap).filter(Boolean).length}
+              </div>
+            )}
 
             {importMutation.isError ? (
               <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -807,7 +1021,7 @@ function ExcelImport() {
               </button>
               <button
                 type="button"
-                disabled={importMutation.isPending || !columnMapping.employee_number}
+                disabled={!canConfirm}
                 className="flex items-center justify-center rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-60"
                 onClick={() => importMutation.mutate()}
               >
@@ -845,3 +1059,4 @@ export default function Dashboard() {
     </div>
   )
 }
+

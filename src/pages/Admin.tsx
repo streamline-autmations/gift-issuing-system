@@ -24,6 +24,7 @@ type Issuing = {
 type GiftOption = {
   id: string
   item_name: string
+  stock_quantity: number | null
   created_at: string
 }
 
@@ -415,6 +416,8 @@ function GiftsSection() {
 
   const [companyId, setCompanyId] = useState<string>('')
   const [issuingId, setIssuingId] = useState<string>('')
+  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const issuingsQuery = useQuery({
     queryKey: ['issuings', companyId, 'for-gifts'],
@@ -436,7 +439,7 @@ function GiftsSection() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('gift_slots')
-        .select('id, issuing_id, company_id, name, is_choice, created_at, gift_options(id, item_name, created_at)')
+        .select('id, issuing_id, company_id, name, is_choice, created_at, gift_options(id, item_name, stock_quantity, created_at)')
         .eq('issuing_id', issuingId)
         .order('created_at', { ascending: true })
 
@@ -469,14 +472,76 @@ function GiftsSection() {
   })
 
   const addOptionMutation = useMutation({
-    mutationFn: async ({ slotId, name }: { slotId: string; name: string }) => {
+    mutationFn: async ({ slotId, name, stock_quantity }: { slotId: string; name: string; stock_quantity: number | null }) => {
       const { error } = await supabase
         .from('gift_options')
-        .insert({ id: crypto.randomUUID(), slot_id: slotId, company_id: companyId, item_name: name.trim() })
+        .insert({ id: crypto.randomUUID(), slot_id: slotId, company_id: companyId, item_name: name.trim(), stock_quantity })
       if (error) throw error
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['gift-slots', issuingId] })
+    },
+  })
+
+  const deleteSlotMutation = useMutation({
+    mutationFn: async ({ slotId }: { slotId: string }) => {
+      const { data: anyEmployeeSlots } = await supabase
+        .from('employee_slots')
+        .select('id')
+        .eq('slot_id', slotId)
+        .limit(1)
+
+      if (anyEmployeeSlots && anyEmployeeSlots.length > 0) {
+        throw new Error('This slot has employees assigned. Remove employees/allocations first.')
+      }
+
+      const { data: anyIssued } = await supabase
+        .from('issued_selections')
+        .select('id')
+        .eq('slot_id', slotId)
+        .limit(1)
+
+      if (anyIssued && anyIssued.length > 0) {
+        throw new Error('This slot has already been issued. Cannot delete it.')
+      }
+
+      const { error } = await supabase.from('gift_slots').delete().eq('id', slotId)
+      if (error) throw error
+    },
+    onSuccess: async () => {
+      setMessage('Gift slot deleted.')
+      setError(null)
+      await qc.invalidateQueries({ queryKey: ['gift-slots', issuingId] })
+    },
+    onError: (e: any) => {
+      setMessage(null)
+      setError(e?.message || 'Could not delete gift slot.')
+    },
+  })
+
+  const deleteOptionMutation = useMutation({
+    mutationFn: async ({ optionId }: { optionId: string }) => {
+      const { data: anyIssued } = await supabase
+        .from('issued_selections')
+        .select('id')
+        .eq('gift_option_id', optionId)
+        .limit(1)
+
+      if (anyIssued && anyIssued.length > 0) {
+        throw new Error('This option has already been issued. Cannot delete it.')
+      }
+
+      const { error } = await supabase.from('gift_options').delete().eq('id', optionId)
+      if (error) throw error
+    },
+    onSuccess: async () => {
+      setMessage('Gift option deleted.')
+      setError(null)
+      await qc.invalidateQueries({ queryKey: ['gift-slots', issuingId] })
+    },
+    onError: (e: any) => {
+      setMessage(null)
+      setError(e?.message || 'Could not delete gift option.')
     },
   })
 
@@ -508,6 +573,9 @@ function GiftsSection() {
           Add Gift Slot
         </button>
       </div>
+
+      {message ? <div className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</div> : null}
+      {error ? <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -568,7 +636,25 @@ function GiftsSection() {
                     <div className="text-sm font-semibold text-slate-900">{slot.name}</div>
                     <div className="text-xs text-slate-600">{slot.is_choice ? 'Choice slot' : 'Fixed slot'}</div>
                   </div>
-                  <div className="text-xs font-medium text-slate-500">{isExpanded ? 'Hide' : 'Show'}</div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                      disabled={deleteSlotMutation.isPending}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setMessage(null)
+                        setError(null)
+                        const ok = window.confirm('Delete this gift slot? This cannot be undone.')
+                        if (!ok) return
+                        deleteSlotMutation.mutate({ slotId: slot.id })
+                      }}
+                    >
+                      Delete
+                    </button>
+                    <div className="text-xs font-medium text-slate-500">{isExpanded ? 'Hide' : 'Show'}</div>
+                  </div>
                 </button>
 
                 {isExpanded ? (
@@ -577,8 +663,29 @@ function GiftsSection() {
                       {options.length ? (
                         options.map((opt) => (
                           <div key={opt.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-                            <div className="text-sm font-medium text-slate-900">{opt.item_name}</div>
-                            <div className="text-xs text-slate-500">{formatDate(opt.created_at)}</div>
+                            <div className="text-sm font-medium text-slate-900">
+                              {opt.item_name}
+                              {opt.stock_quantity === null ? null : (
+                                <span className="ml-2 text-xs font-semibold text-slate-500">({opt.stock_quantity})</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="text-xs text-slate-500">{formatDate(opt.created_at)}</div>
+                              <button
+                                type="button"
+                                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                                disabled={deleteOptionMutation.isPending}
+                                onClick={() => {
+                                  setMessage(null)
+                                  setError(null)
+                                  const ok = window.confirm('Delete this gift option? This cannot be undone.')
+                                  if (!ok) return
+                                  deleteOptionMutation.mutate({ optionId: opt.id })
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </div>
                         ))
                       ) : (
@@ -588,7 +695,7 @@ function GiftsSection() {
                       <AddOptionRow
                         disabled={fixedLimitReached || addOptionMutation.isPending}
                         disabledReason={fixedLimitReached ? 'Fixed slot allows only 1 option.' : null}
-                        onAdd={(name) => addOptionMutation.mutate({ slotId: slot.id, name })}
+                        onAdd={(name, stock_quantity) => addOptionMutation.mutate({ slotId: slot.id, name, stock_quantity })}
                       />
                     </div>
                   </div>
@@ -653,9 +760,10 @@ function AddOptionRow({
 }: {
   disabled: boolean
   disabledReason: string | null
-  onAdd: (name: string) => void
+  onAdd: (name: string, stock_quantity: number | null) => void
 }) {
   const [name, setName] = useState('')
+  const [qty, setQty] = useState<string>('')
 
   return (
     <form
@@ -665,8 +773,11 @@ function AddOptionRow({
         if (disabled) return
         const next = name.trim()
         if (!next) return
-        onAdd(next)
+        const stock_quantity =
+          qty.trim() === '' ? null : Number.isFinite(Number(qty)) ? Math.max(0, Math.trunc(Number(qty))) : null
+        onAdd(next, stock_quantity)
         setName('')
+        setQty('')
       }}
     >
       <div className="flex gap-2">
@@ -675,6 +786,14 @@ function AddOptionRow({
           placeholder="New option name (e.g. Powerbank)"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          disabled={disabled}
+        />
+        <input
+          className="w-28 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+          placeholder="Qty"
+          inputMode="numeric"
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
           disabled={disabled}
         />
         <button
