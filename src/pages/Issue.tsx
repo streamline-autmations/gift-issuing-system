@@ -261,11 +261,23 @@ export default function Issue() {
 
       setEmployeeSlots(normalized)
 
+      // Auto-select single-product choice slots
       const fixedChecks: Record<string, boolean> = {}
       const choiceSelections: Record<string, string> = {}
       for (const es of normalized) {
-        if (es.slot.is_choice) choiceSelections[es.slot.id] = ''
-        else fixedChecks[es.slot.id] = false
+        if (es.slot.is_choice) {
+          // Auto-select if there's only one option
+          const options = es.slot.gift_options ?? []
+          if (options.length === 1) {
+            choiceSelections[es.slot.id] = options[0].id
+          } else {
+            choiceSelections[es.slot.id] = ''
+          }
+        } else {
+          // Auto-check if there's only one option (fixed slot)
+          const options = es.slot.gift_options ?? []
+          fixedChecks[es.slot.id] = options.length === 1 ? true : false
+        }
       }
       setChecks(fixedChecks)
       setChoices(choiceSelections)

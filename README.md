@@ -1,4 +1,26 @@
-# React + TypeScript + Vite
+# Mining Distribution System
+
+A gift distribution system for mining companies built with React, TypeScript, Vite, and Supabase.
+
+---
+
+## Supabase Account Information
+
+**GitHub Account:** gentle-koos  
+**Linked Email:** christiaansteffen123@gmail.com
+
+**Supabase Project URL:** `https://rsxsvgfzzdtlmdaifuxo.supabase.co`
+
+### Login Credentials
+
+| Role | Email | Password |
+|------|-------|----------|
+| Super Admin | `streamline.automations.hq@gmail.com` | `$tud12Muffin` |
+| Operator | `operator@bestdeals.com` | `BestDealsUser1!` |
+
+---
+
+## React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

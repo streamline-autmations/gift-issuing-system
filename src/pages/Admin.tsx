@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Pencil, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import Modal from '@/components/Modal'
@@ -255,12 +255,18 @@ function IssuingsSection() {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [mineName, setMineName] = useState('')
+  
+  // Edit mode state
+  const [editOpen, setEditOpen] = useState(false)
+  const [editIssuing, setEditIssuing] = useState<Issuing | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editMineName, setEditMineName] = useState('')
 
   const createMutation = useMutation({
     mutationFn: async () => {
       const { error } = await supabase
         .from('issuings')
-        .insert({ id: crypto.randomUUID(), company_id: companyId, name: name.trim(), mine_name: mineName.trim(), is_active: true })
+        .insert({ id: crypto.randomUUID(), company_id: companyId, name: name.trim() || null, mine_name: mineName.trim(), is_active: true })
       if (error) throw error
     },
     onSuccess: async () => {
@@ -280,6 +286,60 @@ function IssuingsSection() {
       await qc.invalidateQueries({ queryKey: ['issuings', companyId] })
     },
   })
+
+  const editMutation = useMutation({
+    mutationFn: async ({ issuingId, name, mineName }: { issuingId: string; name: string; mineName: string }) => {
+      const { error } = await supabase
+        .from('issuings')
+        .update({ name: name.trim() || null, mine_name: mineName.trim() })
+        .eq('id', issuingId)
+      if (error) throw error
+    },
+    onSuccess: async () => {
+      setEditOpen(false)
+      setEditIssuing(null)
+      await qc.invalidateQueries({ queryKey: ['issuings', companyId] })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async ({ issuingId }: { issuingId: string }) => {
+      // Check if there are employees in this issuing
+      const { data: employees } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('issuing_id', issuingId)
+        .limit(1)
+      
+      if (employees && employees.length > 0) {
+        throw new Error('Cannot delete issuing with employees. Remove employees first.')
+      }
+      
+      // Check for issued records
+      const { data: issued } = await supabase
+        .from('issued_records')
+        .select('id')
+        .eq('issuing_id', issuingId)
+        .limit(1)
+      
+      if (issued && issued.length > 0) {
+        throw new Error('Cannot delete issuing with issued records.')
+      }
+      
+      const { error } = await supabase.from('issuings').delete().eq('id', issuingId)
+      if (error) throw error
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['issuings', companyId] })
+    },
+  })
+
+  const openEditModal = (issuing: Issuing) => {
+    setEditIssuing(issuing)
+    setEditName(issuing.name || '')
+    setEditMineName(issuing.mine_name)
+    setEditOpen(true)
+  }
 
   return (
     <div className="space-y-4">
@@ -322,25 +382,26 @@ function IssuingsSection() {
               <th className="px-4 py-3 font-semibold">Mine</th>
               <th className="px-4 py-3 font-semibold">Active</th>
               <th className="px-4 py-3 font-semibold">Created</th>
+              <th className="px-4 py-3 font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody>
             {!companyId ? (
               <tr>
-                <td className="px-4 py-4 text-slate-500" colSpan={4}>
+                <td className="px-4 py-4 text-slate-500" colSpan={5}>
                   Select a company to view issuings.
                 </td>
               </tr>
             ) : issuingsQuery.isLoading ? (
               <tr>
-                <td className="px-4 py-4 text-slate-500" colSpan={4}>
+                <td className="px-4 py-4 text-slate-500" colSpan={5}>
                   Loading...
                 </td>
               </tr>
             ) : issuingsQuery.data?.length ? (
               issuingsQuery.data.map((i) => (
                 <tr key={i.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-medium text-slate-900">{i.name}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900">{i.name || '-'}</td>
                   <td className="px-4 py-3 text-slate-600">{i.mine_name}</td>
                   <td className="px-4 py-3">
                     <button
@@ -357,11 +418,35 @@ function IssuingsSection() {
                     </button>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{formatDate(i.created_at)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(i)}
+                        className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"
+                        title="Edit"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm('Are you sure you want to delete this issuing?')) {
+                            deleteMutation.mutate({ issuingId: i.id })
+                          }
+                        }}
+                        className="rounded p-1 text-red-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td className="px-4 py-4 text-slate-500" colSpan={4}>
+                <td className="px-4 py-4 text-slate-500" colSpan={5}>
                   No issuings for this company.
                 </td>
               </tr>
@@ -379,12 +464,11 @@ function IssuingsSection() {
           }}
         >
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Issuing name</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Issuing name <span className="text-slate-400">(optional)</span></label>
             <input
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              required
             />
           </div>
           <div>
@@ -403,6 +487,44 @@ function IssuingsSection() {
             className="flex w-full items-center justify-center rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
           >
             {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}
+          </button>
+        </form>
+      </Modal>
+
+      <Modal open={editOpen} title="Edit Issuing" onClose={() => setEditOpen(false)}>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (editIssuing) {
+              editMutation.mutate({ issuingId: editIssuing.id, name: editName, mineName: editMineName })
+            }
+          }}
+        >
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Issuing name <span className="text-slate-400">(optional)</span></label>
+            <input
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Mine name</label>
+            <input
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+              value={editMineName}
+              onChange={(e) => setEditMineName(e.target.value)}
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={editMutation.isPending}
+            className="flex w-full items-center justify-center rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+          >
+            {editMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Changes'}
           </button>
         </form>
       </Modal>
@@ -471,7 +593,7 @@ function GiftsSection() {
     mutationFn: async () => {
       const { error } = await supabase
         .from('gift_slots')
-        .insert({ id: crypto.randomUUID(), issuing_id: issuingId, company_id: companyId, name: slotName.trim(), is_choice: slotIsChoice })
+        .insert({ id: crypto.randomUUID(), issuing_id: issuingId, company_id: companyId, name: slotName.trim() || null, is_choice: slotIsChoice })
       if (error) throw error
     },
     onSuccess: async () => {
@@ -850,12 +972,12 @@ function GiftsSection() {
           }}
         >
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Slot name</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Slot name <span className="text-slate-400">(optional)</span></label>
             <input
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
               value={slotName}
               onChange={(e) => setSlotName(e.target.value)}
-              required
+              placeholder="Leave empty for unnamed slot"
             />
           </div>
           <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
