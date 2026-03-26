@@ -589,7 +589,7 @@ export default function Issue() {
                   className="px-6 py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-lg rounded-xl shadow-lg transition-all transform active:scale-[0.98] flex-[2] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                   type="button"
                 >
-                  {distributing ? 'Processing...' : 'Distribute'}
+                  {distributing ? 'Processing...' : 'Distribute & Print'}
                 </button>
               </div>
             </div>

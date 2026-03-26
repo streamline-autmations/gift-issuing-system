@@ -1155,11 +1155,13 @@ export default function Admin() {
 
   useEffect(() => {
     if (loading) return
-    if (profile?.role !== 'superadmin') navigate('/issue', { replace: true })
+    // Allow both superadmin and operator roles to access admin
+    if (profile?.role !== 'superadmin' && profile?.role !== 'operator') navigate('/issue', { replace: true })
   }, [loading, profile?.role, navigate])
 
   if (loading) return null
-  if (profile?.role !== 'superadmin') return null
+  // Allow both superadmin and operator roles to access admin
+  if (profile?.role !== 'superadmin' && profile?.role !== 'operator') return null
 
   return (
     <div className="min-h-screen bg-slate-50">
