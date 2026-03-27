@@ -234,9 +234,23 @@ function CompaniesSection() {
 }
 
 function IssuingsSection() {
+  const { profile } = useAuth()
+  const isAfricanNomadAdmin = profile?.email === 'admin@africannomad.co.za'
   const qc = useQueryClient()
   const companiesQuery = useCompanies()
-  const [companyId, setCompanyId] = useState<string>('')
+  const [companyId, setCompanyId] = useState<string>(() => {
+    return isAfricanNomadAdmin ? profile?.company_id || '' : localStorage.getItem('admin_issuing_company_id') || ''
+  })
+
+  useEffect(() => {
+    if (companyId) localStorage.setItem('admin_issuing_company_id', companyId)
+  }, [companyId])
+
+  useEffect(() => {
+    if (isAfricanNomadAdmin && profile?.company_id && !companyId) {
+      setCompanyId(profile.company_id)
+    }
+  }, [isAfricanNomadAdmin, profile?.company_id, companyId])
 
   const issuingsQuery = useQuery({
     queryKey: ['issuings', companyId],
@@ -358,21 +372,25 @@ function IssuingsSection() {
         </button>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <label className="mb-1 block text-sm font-medium text-slate-700">Company</label>
-        <select
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
-          value={companyId}
-          onChange={(e) => setCompanyId(e.target.value)}
-        >
-          <option value="">Select company...</option>
-          {companiesQuery.data?.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      {!isAfricanNomadAdmin && (
+        {!isAfricanNomadAdmin && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <label className="mb-1 block text-sm font-medium text-slate-700">Company</label>
+          <select
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
+            value={companyId}
+            onChange={(e) => setCompanyId(e.target.value)}
+          >
+            <option value="">Select company...</option>
+            {companiesQuery.data?.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      )}
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
@@ -533,10 +551,23 @@ function IssuingsSection() {
 }
 
 function GiftsSection() {
+  const { profile } = useAuth()
+  const isAfricanNomadAdmin = profile?.email === 'admin@africannomad.co.za'
   const qc = useQueryClient()
   const companiesQuery = useCompanies()
+  const [companyId, setCompanyId] = useState<string>(() => {
+    return isAfricanNomadAdmin ? profile?.company_id || '' : localStorage.getItem('admin_gifts_company_id') || ''
+  })
 
-  const [companyId, setCompanyId] = useState<string>('')
+  useEffect(() => {
+    if (companyId) localStorage.setItem('admin_gifts_company_id', companyId)
+  }, [companyId])
+
+  useEffect(() => {
+    if (isAfricanNomadAdmin && profile?.company_id && !companyId) {
+      setCompanyId(profile.company_id)
+    }
+  }, [isAfricanNomadAdmin, profile?.company_id, companyId])
   const [issuingId, setIssuingId] = useState<string>('')
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -782,23 +813,25 @@ function GiftsSection() {
       {error ? <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
 
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <label className="mb-1 block text-sm font-medium text-slate-700">Company</label>
-          <select
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
-            value={companyId}
-            onChange={(e) => setCompanyId(e.target.value)}
-          >
-            <option value="">Select company...</option>
-            {companiesQuery.data?.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        {!isAfricanNomadAdmin ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <label className="mb-1 block text-sm font-medium text-slate-700">Company</label>
+            <select
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
+              value={companyId}
+              onChange={(e) => setCompanyId(e.target.value)}
+            >
+              <option value="">Select company...</option>
+              {companiesQuery.data?.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className={`rounded-xl border border-slate-200 bg-white p-4 ${isAfricanNomadAdmin ? 'md:col-span-2' : ''}`}>
           <label className="mb-1 block text-sm font-medium text-slate-700">Issuing</label>
           <select
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
@@ -1149,19 +1182,20 @@ function AddOptionRow({
 }
 
 export default function Admin() {
-  const { profile, loading } = useAuth()
+  const { profile, loading, isElevated } = useAuth()
   const navigate = useNavigate()
-  const [section, setSection] = useState<'companies' | 'issuings' | 'gifts'>('companies')
+  const [section, setSection] = useState<'companies' | 'issuings' | 'gifts'>('issuings')
+
+  const isSuperAdmin = profile?.role === 'superadmin' || (profile?.email === 'admin@africannomad.co.za' && isElevated)
+  const isAfricanNomadAdmin = profile?.email === 'admin@africannomad.co.za'
 
   useEffect(() => {
     if (loading) return
-    // Allow both superadmin and operator roles to access admin
-    if (profile?.role !== 'superadmin' && profile?.role !== 'operator') navigate('/issue', { replace: true })
-  }, [loading, profile?.role, navigate])
+    if (!isSuperAdmin) navigate('/issue', { replace: true })
+  }, [loading, isSuperAdmin, navigate])
 
   if (loading) return null
-  // Allow both superadmin and operator roles to access admin
-  if (profile?.role !== 'superadmin' && profile?.role !== 'operator') return null
+  if (!isSuperAdmin) return null
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -1174,14 +1208,16 @@ export default function Admin() {
         <div className="grid gap-6 md:grid-cols-[240px_1fr]">
           <div className="h-fit rounded-xl border border-slate-200 bg-white p-3">
             <div className="space-y-1">
-              <SidebarButton active={section === 'companies'} label="Companies" onClick={() => setSection('companies')} />
+              {!isAfricanNomadAdmin && (
+                <SidebarButton active={section === 'companies'} label="Companies" onClick={() => setSection('companies')} />
+              )}
               <SidebarButton active={section === 'issuings'} label="Issuings" onClick={() => setSection('issuings')} />
               <SidebarButton active={section === 'gifts'} label="Gifts" onClick={() => setSection('gifts')} />
             </div>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-6">
-            {section === 'companies' ? <CompaniesSection /> : null}
+            {section === 'companies' && !isAfricanNomadAdmin ? <CompaniesSection /> : null}
             {section === 'issuings' ? <IssuingsSection /> : null}
             {section === 'gifts' ? <GiftsSection /> : null}
           </div>

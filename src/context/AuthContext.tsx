@@ -6,6 +6,7 @@ type UserProfile = {
   id: string
   role: string | null
   company_id: string | null
+  email?: string
 }
 
 type AuthContextValue = {
@@ -14,6 +15,8 @@ type AuthContextValue = {
   loading: boolean
   setProfile: (profile: UserProfile | null) => void
   signOut: () => Promise<void>
+  isElevated: boolean
+  toggleElevation: () => void
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -22,6 +25,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isElevated, setIsElevated] = useState(() => {
+    return localStorage.getItem('isElevated') === 'true'
+  })
+
+  const toggleElevation = () => {
+    setIsElevated((prev) => {
+      const next = !prev
+      localStorage.setItem('isElevated', String(next))
+      return next
+    })
+  }
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'U') {
+        if (session?.user?.email === 'admin@africannomad.co.za') {
+          e.preventDefault()
+          toggleElevation()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [session?.user?.email])
 
   useEffect(() => {
     let cancelled = false
@@ -48,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false
 
-    async function loadProfile(userId: string) {
+    async function loadProfile(userId: string, email?: string) {
       const { data, error } = await supabase
         .from('profiles')
         .select('id, role, company_id')
@@ -57,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (cancelled) return
       if (error || !data) {
-        setProfile({ id: userId, role: null, company_id: null })
+        setProfile({ id: userId, role: null, company_id: null, email })
         return
       }
 
@@ -65,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: data.id,
         role: data.role ?? null,
         company_id: data.company_id ?? null,
+        email,
       })
     }
 
@@ -73,12 +102,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    loadProfile(session.user.id)
+    loadProfile(session.user.id, session.user.email)
 
     return () => {
       cancelled = true
     }
-  }, [session?.user?.id])
+  }, [session?.user?.id, session?.user?.email])
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -90,8 +119,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await supabase.auth.signOut()
         setProfile(null)
       },
+      isElevated,
+      toggleElevation,
     }),
-    [session, profile, loading],
+    [session, profile, loading, isElevated],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

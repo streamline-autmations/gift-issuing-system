@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
+import { useMutation } from '@tanstack/react-query'
 import type { Employee, EmployeeSlot, GiftOption, IssuedRecord, IssuedSelection, Issuing } from '@/types'
 import { printSlip } from '@/utils/printSlip'
-import { AlertCircle, CheckCircle, History, Loader2, Search } from 'lucide-react'
+import { AlertCircle, CheckCircle, History, Loader2, Search, Printer } from 'lucide-react'
 
 type SlotView = {
   employeeSlot: EmployeeSlot
@@ -39,6 +40,73 @@ export default function Issue() {
 
   const [history, setHistory] = useState<IssuedRecord[]>([])
   const [showHistory, setShowHistory] = useState(false)
+  const [reprintingId, setReprintingId] = useState<string | null>(null)
+
+  const reprintMutation = useMutation({
+    mutationFn: async (recordId: string) => {
+      // Get the issued record
+      const { data: record } = await supabase
+        .from('issued_records')
+        .select('id, company_id, issuing_id, employee_id, issued_at')
+        .eq('id', recordId)
+        .single()
+      
+      if (!record) throw new Error('Record not found')
+      
+      // Get employee
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('id, company_id, issuing_id, employee_number, first_name, last_name, extra_data')
+        .eq('id', record.employee_id)
+        .single()
+      
+      if (!emp) throw new Error('Employee not found')
+      
+      // Get issuing
+      const { data: issuing } = await supabase
+        .from('issuings')
+        .select('name, mine_name')
+        .eq('id', record.issuing_id)
+        .single()
+      
+      // Get company
+      const { data: company } = await supabase
+        .from('companies')
+        .select('name')
+        .eq('id', record.company_id)
+        .single()
+      
+      // Get issued selections with gift details
+      const { data: selections } = await supabase
+        .from('issued_selections')
+        .select('slot_id, gift_option_id, slot:gift_slots(name, is_choice), gift_option:gift_options(item_name)')
+        .eq('issued_record_id', recordId)
+      
+      // Normalize selections
+      const normalizedSelections = (selections ?? []).map((s: any) => ({
+        ...s,
+        slot: Array.isArray(s.slot) ? s.slot[0] : s.slot,
+        gift_option: Array.isArray(s.gift_option) ? s.gift_option[0] : s.gift_option,
+      }))
+      
+      // Build print items
+      const printItems = normalizedSelections.map((s: any) => ({
+        slotName: s.slot?.name || '',
+        itemName: s.gift_option?.item_name || '',
+        isChoice: s.slot?.is_choice || false,
+      }))
+      
+      // Print
+      printSlip({
+        companyName: company?.name || 'Company',
+        issuingName: issuing?.name || '',
+        mineName: issuing?.mine_name || '',
+        issuedAt: record.issued_at,
+        employee: emp,
+        items: printItems,
+      })
+    },
+  })
 
   const [checks, setChecks] = useState<Record<string, boolean>>({})
   const [choices, setChoices] = useState<Record<string, string>>({})
@@ -78,7 +146,9 @@ export default function Issue() {
         if (error) return
         const list = (data ?? []) as Issuing[]
         setIssuings(list)
-        if (!selectedIssuingId && list[0]) setSelectedIssuingId(list[0].id)
+        if (!selectedIssuingId && list.length > 0) {
+          setSelectedIssuingId(list[0].id)
+        }
       })
   }, [profile?.company_id, selectedIssuingId])
 
@@ -454,10 +524,28 @@ export default function Issue() {
               </div>
               <p className="text-gray-600">Issued on {new Date(alreadyIssued.issued_at).toLocaleString()}</p>
 
-              <div className="mt-6 flex justify-center">
+              <div className="mt-6 flex justify-center gap-3">
                 <button
                   type="button"
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60 flex items-center gap-2"
+                  onClick={() => {
+                    setReprintingId(alreadyIssued.id)
+                    reprintMutation.mutate(alreadyIssued.id, {
+                      onSettled: () => setReprintingId(null),
+                    })
+                  }}
+                  disabled={reprintingId === alreadyIssued.id}
+                >
+                  {reprintingId === alreadyIssued.id ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Printer size={16} />
+                  )}
+                  Reprint Slip
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                   onClick={async () => {
                     const nextOpen = !issuedDetailsOpen
                     setIssuedDetailsOpen(nextOpen)
@@ -466,7 +554,7 @@ export default function Issue() {
                     }
                   }}
                 >
-                  {issuedDetailsOpen ? 'Hide details' : 'View history details'}
+                  {issuedDetailsOpen ? 'Hide details' : 'View details'}
                 </button>
               </div>
 
@@ -630,24 +718,57 @@ export default function Issue() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex-1 max-h-[calc(100vh-250px)] overflow-y-auto">
               <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
                 <h3 className="font-semibold text-gray-700 flex items-center gap-2">
-                  <History size={16} />
-                  Last 20 Issued
+                  <History size={18} />
+                  Recent History
                 </h3>
+                <button
+                  onClick={fetchHistory}
+                  className="p-1 hover:bg-gray-200 rounded-md transition-colors"
+                  title="Refresh history"
+                >
+                  <Loader2 size={16} className={loading ? 'animate-spin' : ''} />
+                </button>
               </div>
               <div className="divide-y divide-gray-100">
                 {history.length === 0 ? (
-                  <div className="p-8 text-center text-gray-400 text-sm">No history yet</div>
+                  <div className="p-8 text-center text-gray-500 text-sm">No recent records</div>
                 ) : (
-                  history.map((r) => (
-                    <div key={r.id} className="p-4 hover:bg-gray-50 transition-colors">
+                  history.map((record) => (
+                    <div key={record.id} className="p-4 hover:bg-gray-50 transition-colors group">
                       <div className="flex justify-between items-start mb-1">
-                        <span className="font-medium text-gray-900">#{r.employee?.employee_number}</span>
-                        <span className="text-xs text-gray-500">
-                          {new Date(r.issued_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                        <p className="font-semibold text-gray-900">
+                          {record.employee
+                            ? `${record.employee.first_name ?? ''} ${record.employee.last_name ?? ''}`.trim() ||
+                              'Employee'
+                            : 'Unknown'}
+                        </p>
+                        <button
+                          onClick={() => {
+                            setReprintingId(record.id)
+                            reprintMutation.mutate(record.id, {
+                              onSettled: () => setReprintingId(null),
+                            })
+                          }}
+                          disabled={reprintingId === record.id}
+                          className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-200 rounded-md transition-all flex items-center gap-1 text-xs font-medium"
+                          title="Reprint slip"
+                        >
+                          {reprintingId === record.id ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Printer size={14} />
+                          )}
+                          Reprint
+                        </button>
                       </div>
-                      <p className="text-sm text-gray-600 truncate">
-                        {r.employee ? `${(r.employee.first_name ?? '').trim()} ${(r.employee.last_name ?? '').trim()}`.trim() : ''}
+                      <p className="text-xs text-gray-500 font-mono mb-2">#{record.employee?.employee_number}</p>
+                      <p className="text-[10px] text-gray-400">
+                        {new Date(record.issued_at).toLocaleString([], {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
                       </p>
                     </div>
                   ))

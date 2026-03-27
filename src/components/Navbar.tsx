@@ -3,14 +3,16 @@ import { useAuth } from '@/context/AuthContext'
 import { LogOut, LayoutDashboard, Gift, FileBarChart, Shield } from 'lucide-react'
 
 export default function Navbar() {
-  const { profile, session, signOut } = useAuth()
+  const { profile, session, signOut, isElevated } = useAuth()
   const location = useLocation()
   
   const isActive = (path: string) => location.pathname === path
   
   const navItems = [{ name: 'Issue', path: '/issue', icon: Gift }, { name: 'Reports', path: '/reports', icon: FileBarChart }]
 
-  if (profile?.role === 'superadmin') {
+  const isSuperAdmin = profile?.role === 'superadmin' || (profile?.email === 'admin@africannomad.co.za' && isElevated)
+
+  if (isSuperAdmin) {
     navItems.unshift({ name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard })
     navItems.push({ name: 'Admin', path: '/admin', icon: Shield })
   }

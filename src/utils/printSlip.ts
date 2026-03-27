@@ -17,7 +17,10 @@ export const printSlip = ({
   employee,
   items,
 }: PrintSlipProps) => {
-  const paperWidthMm = 80
+  // SET PRINTER SIZE HERE:
+  // Standard thermal printer (till printer) is usually 58mm or 80mm.
+  // Change paperWidthMm to 80 if you have a larger printer.
+  const paperWidthMm = 58 
   const paperMarginMm = 0
 
   const now = new Date(issuedAt).toLocaleString()
