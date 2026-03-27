@@ -227,6 +227,10 @@ export const printSlip = ({
           </div>
         </div>
       </div>
+    </body>
+    </html>
+  `;
+
   // Send the HTML content to the local print server
   fetch('http://localhost:4242/print', {
     method: 'POST',
