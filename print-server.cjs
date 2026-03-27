@@ -44,39 +44,47 @@ const server = http.createServer((req, res) => {
 
         // 2. Use puppeteer to convert HTML to PDF
         const puppeteer = require('puppeteer');
-        const browser = await puppeteer.launch({ headless: 'new' });
+        process.env.PUPPETEER_DISABLE_HEADLESS_WARNING = '1';
+        const browser = await puppeteer.launch({ 
+          headless: 'new',
+          args: [
+            '--disable-web-security',
+            '--force-device-scale-factor=1'
+          ]
+        });
         const page = await browser.newPage();
         
-        // Set the viewport to match the thermal printer width exactly
-        // Higher deviceScaleFactor for high-res output
-        await page.setViewport({ width: 302, height: 100, deviceScaleFactor: 5 });
-        
-        await page.goto(`file:///${tempHtmlPath}`, { waitUntil: 'networkidle0' });
-
-        // Get the dynamic height of the content
-        const contentHeightMm = await page.evaluate(() => {
-          const slip = document.querySelector('.slip-container');
-          if (!slip) return 80;
-          // Return exact height in mm
-          return Math.ceil((slip.scrollHeight / 96) * 25.4) + 1; 
-        });
-
-        await page.pdf({
-          path: tempPdfPath,
-          width: '80mm',
-          height: `${contentHeightMm}mm`,
-          printBackground: true,
-          margin: { top: '0mm', bottom: '0mm', left: '0mm', right: '0mm' },
-          scale: 1.0,
-          pageRanges: '1',
-          displayHeaderFooter: false,
-          preferCSSPageSize: true,
-          landscape: false // Ensure portrait orientation
-        });
+        await page.setViewport({ width: 302, height: 800, deviceScaleFactor: 4 }); 
+        await page.goto('file:///' + tempHtmlPath, { waitUntil: 'networkidle0' }); 
+        const contentHeightPx = await page.evaluate(function() { 
+          var el = document.querySelector('.slip-container'); 
+          return el ? el.offsetHeight : document.body.offsetHeight; 
+        }); 
+        var heightMm = Math.ceil((contentHeightPx / 96) * 25.4) + 4; 
+        console.log('Slip height calculated: ' + heightMm + 'mm'); 
+        await page.pdf({ 
+          path: tempPdfPath, 
+          width: '80mm', 
+          height: heightMm + 'mm', 
+          printBackground: true, 
+          landscape: false, 
+          margin: { top: '1mm', bottom: '1mm', left: '1mm', right: '1mm' }, 
+          preferCSSPageSize: false, 
+          displayHeaderFooter: false 
+        }); 
         await browser.close();
         console.log('PDF generated successfully.');
 
-        // 3. Send PDF to printer using pdf-to-printer
+        // 3. Save PDF to desktop for debugging
+        try {
+          var desktopPath = require('os').homedir() + '\\Desktop\\slip-preview.pdf'; 
+          fs.copyFileSync(tempPdfPath, desktopPath); 
+          console.log('Preview saved to: ' + desktopPath); 
+        } catch (e) {
+          console.error('Failed to save preview:', e.message);
+        }
+
+        // 4. Send PDF to printer using pdf-to-printer
         const printer = require('pdf-to-printer');
         await printer.print(tempPdfPath, { printer: PRINTER_NAME });
         console.log(`Print job sent to "${PRINTER_NAME}" successfully.`);

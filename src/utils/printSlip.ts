@@ -169,12 +169,13 @@ export const printSlip = ({
 
         .signature-section {
           text-align: left;
+          margin-top: 10px;
         }
 
         .signature-line {
           border-bottom: 2px solid #000;
           margin-bottom: 4px;
-          height: 20px;
+          height: 40px;
           width: 80%;
         }
 
