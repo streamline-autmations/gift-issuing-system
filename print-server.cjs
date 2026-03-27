@@ -48,18 +48,17 @@ const server = http.createServer((req, res) => {
         const page = await browser.newPage();
         
         // Set the viewport to make text sharp and crisp
-        // A higher deviceScaleFactor (e.g., 4) produces even sharper text for thermal printers
-        await page.setViewport({ width: 302, height: 100, deviceScaleFactor: 4 });
+        // Higher deviceScaleFactor for high-res output
+        await page.setViewport({ width: 400, height: 100, deviceScaleFactor: 5 });
         
         await page.goto(`file:///${tempHtmlPath}`, { waitUntil: 'networkidle0' });
 
-        // Get the dynamic height of the content to fix the "too long" issue
+        // Get the dynamic height of the content
         const contentHeightMm = await page.evaluate(() => {
           const slip = document.querySelector('.slip-container');
-          if (!slip) return 150; // Fallback
-          // Calculate height in mm (assuming 96 DPI)
-          // Using a smaller padding (+ 2mm instead of + 10mm) to make it shorter
-          return Math.ceil((slip.offsetHeight / 96) * 25.4) + 2; 
+          if (!slip) return 150;
+          // Return exact height in mm
+          return Math.ceil((slip.scrollHeight / 96) * 25.4) + 1; 
         });
 
         await page.pdf({
@@ -68,9 +67,10 @@ const server = http.createServer((req, res) => {
           height: `${contentHeightMm}mm`,
           printBackground: true,
           margin: { top: '0mm', bottom: '0mm', left: '0mm', right: '0mm' },
-          scale: 1.0, // Set scale to 1.0 for maximum sharpness
-          pageRanges: '1', // Ensure only the first page is printed
-          displayHeaderFooter: false
+          scale: 1.0,
+          pageRanges: '1',
+          displayHeaderFooter: false,
+          preferCSSPageSize: true
         });
         await browser.close();
         console.log('PDF generated successfully.');

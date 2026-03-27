@@ -40,7 +40,7 @@ export const printSlip = ({
     .map(
       (item) => `
     <div class="item-row">
-      <div class="checkbox"></div>
+      <div class="quantity">1x</div>
       <div class="item-details">
         <span class="slot-name">${item.slotName}</span>
         <span class="item-name">${item.itemName}</span>
@@ -63,66 +63,60 @@ export const printSlip = ({
         }
 
         body {
-          font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+          font-family: 'Courier New', Courier, monospace;
           margin: 0;
           padding: 0;
-          color: #333;
+          color: #000;
           width: ${paperWidthMm}mm;
+          background: white;
         }
         
         .slip-container {
           width: ${paperWidthMm}mm;
           margin: 0;
-          padding: 4mm 3mm;
+          padding: 2mm 1mm;
           box-sizing: border-box;
         }
 
         h1 {
-          font-size: 14px;
-          font-weight: bold;
-          margin: 0 0 5px 0;
-          text-transform: uppercase;
-          text-align: center;
+          display: none; /* Hide Company Name */
         }
 
         h2 {
-          font-size: 12px;
-          font-weight: normal;
-          margin: 0 0 6px 0;
+          font-size: 14px;
+          font-weight: bold;
+          margin: 0 0 2px 0;
           text-align: center;
-          color: #666;
         }
 
         .subline {
-          font-size: 11px;
-          font-weight: normal;
-          margin: 0 0 10px 0;
+          font-size: 12px;
+          font-weight: bold;
+          margin: 0 0 8px 0;
           text-align: center;
-          color: #666;
         }
 
         .divider {
-          border-bottom: 1px dashed #bbb;
-          margin: 8px 0;
+          border-bottom: 1px dashed #000;
+          margin: 4px 0;
         }
 
         .section-title {
           font-size: 11px;
           font-weight: bold;
           text-transform: uppercase;
-          color: #888;
-          margin-bottom: 6px;
+          margin-bottom: 4px;
         }
 
         .detail-row {
           display: flex;
-          margin-bottom: 3px;
-          font-size: 11px;
+          margin-bottom: 2px;
+          font-size: 12px;
         }
 
         .label {
-          font-weight: 600;
-          width: 34mm;
+          font-weight: bold;
+          width: 30mm;
         }
 
         .value {
@@ -132,26 +126,24 @@ export const printSlip = ({
         .item-row {
           display: flex;
           align-items: center;
-          padding: 4px 0;
-          border-bottom: 1px dotted #ddd;
+          padding: 3px 0;
         }
 
-        .checkbox {
-          width: 12px;
-          height: 12px;
-          border: 1px solid #333;
-          margin-right: 8px;
+        .quantity {
+          font-weight: bold;
+          font-size: 12px;
+          margin-right: 10px;
+          width: 20px;
         }
 
         .slot-name {
-          font-weight: 600;
-          margin-right: 6px;
-          font-size: 11px;
+          font-weight: bold;
+          margin-right: 4px;
+          font-size: 12px;
         }
 
         .item-name {
-          color: #333;
-          font-size: 11px;
+          font-size: 12px;
         }
 
         .choice-tag {
