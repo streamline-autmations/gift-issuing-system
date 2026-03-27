@@ -10,7 +10,7 @@ export default function Navbar() {
   
   const navItems = [{ name: 'Issue', path: '/issue', icon: Gift }, { name: 'Reports', path: '/reports', icon: FileBarChart }]
 
-  const isAfricanNomadAdmin = profile?.email === 'admin@africannomad.co.za'
+  const isAfricanNomadAdmin = session?.user?.email === 'admin@africannomad.co.za'
   const isSuperAdmin = profile?.role === 'superadmin' || (isAfricanNomadAdmin && isElevated)
 
   if (isSuperAdmin) {
