@@ -1,16 +1,17 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { LogOut, LayoutDashboard, Gift, FileBarChart, Shield } from 'lucide-react'
+import { LogOut, LayoutDashboard, Gift, FileBarChart, Shield, UserCog } from 'lucide-react'
 
 export default function Navbar() {
-  const { profile, session, signOut, isElevated } = useAuth()
+  const { profile, session, signOut, isElevated, toggleElevation } = useAuth()
   const location = useLocation()
   
   const isActive = (path: string) => location.pathname === path
   
   const navItems = [{ name: 'Issue', path: '/issue', icon: Gift }, { name: 'Reports', path: '/reports', icon: FileBarChart }]
 
-  const isSuperAdmin = profile?.role === 'superadmin' || (profile?.email === 'admin@africannomad.co.za' && isElevated)
+  const isAfricanNomadAdmin = profile?.email === 'admin@africannomad.co.za'
+  const isSuperAdmin = profile?.role === 'superadmin' || (isAfricanNomadAdmin && isElevated)
 
   if (isSuperAdmin) {
     navItems.unshift({ name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard })
@@ -43,6 +44,20 @@ export default function Navbar() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            {isAfricanNomadAdmin && (
+              <button
+                onClick={toggleElevation}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all border-2 ${
+                  isElevated
+                    ? 'bg-amber-500 border-amber-400 text-white hover:bg-amber-600'
+                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white'
+                }`}
+                title={isElevated ? 'Switch to Issuing Mode' : 'Switch to Admin Mode'}
+              >
+                <UserCog size={16} />
+                {isElevated ? 'ADMIN MODE' : 'SWITCH TO ADMIN'}
+              </button>
+            )}
             <div className="text-sm text-slate-300 hidden sm:block">
               {session?.user?.email}
             </div>
