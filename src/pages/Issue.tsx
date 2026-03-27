@@ -414,8 +414,20 @@ export default function Issue() {
         for (const opt of sv.options) optionNameById.set(opt.id, opt.item_name)
       }
 
-      await supabase.functions.invoke('print-slip', {
-        body: { recordId: issuedRecordId },
+      const printItems = slotViews.map((sv) => {
+        const slot = sv.employeeSlot.slot
+        const selectedOptionId = slot.is_choice ? choices[slot.id] : sv.fixedOption?.id
+        const itemName = selectedOptionId ? optionNameById.get(selectedOptionId) ?? '' : ''
+        return { slotName: slot.name, itemName, isChoice: slot.is_choice }
+      })
+
+      printSlip({
+        companyName: companyName || 'Company',
+        issuingName: currentIssuing?.name || '',
+        mineName: currentIssuing?.mine_name || '',
+        issuedAt: record.issued_at,
+        employee,
+        items: printItems,
       })
 
       resetScreen()
