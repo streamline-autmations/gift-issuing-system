@@ -373,7 +373,6 @@ function IssuingsSection() {
       </div>
 
       {!isAfricanNomadAdmin && (
-        {!isAfricanNomadAdmin && (
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <label className="mb-1 block text-sm font-medium text-slate-700">Company</label>
           <select
@@ -389,7 +388,6 @@ function IssuingsSection() {
             ))}
           </select>
         </div>
-      )}
       )}
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
