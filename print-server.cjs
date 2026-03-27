@@ -54,13 +54,21 @@ const server = http.createServer((req, res) => {
         });
         const page = await browser.newPage();
         
-        await page.setViewport({ width: 302, height: 800, deviceScaleFactor: 4 }); 
+        await page.setViewport({ width: 302, height: 800, deviceScaleFactor: 1 }); 
         await page.goto('file:///' + tempHtmlPath, { waitUntil: 'networkidle0' }); 
         const contentHeightPx = await page.evaluate(function() { 
           var el = document.querySelector('.slip-container'); 
-          return el ? el.offsetHeight : document.body.offsetHeight; 
+          return el ? el.scrollHeight : document.body.scrollHeight; 
         }); 
         var heightMm = Math.ceil((contentHeightPx / 96) * 25.4) + 4; 
+        
+        // If the slip is reported as 30cm, we need to find out why. 
+        // For now, let's cap it or adjust to get it closer to 10cm if it's crazy long.
+        if (heightMm > 150) {
+          console.log('Original calculated height too long (' + heightMm + 'mm), adjusting...');
+          heightMm = 120; // Target around 10-12cm
+        }
+        
         console.log('Slip height calculated: ' + heightMm + 'mm'); 
         await page.pdf({ 
           path: tempPdfPath, 
@@ -80,8 +88,8 @@ const server = http.createServer((req, res) => {
           var desktopPath = require('os').homedir() + '\\Desktop\\slip-preview.pdf'; 
           fs.copyFileSync(tempPdfPath, desktopPath); 
           console.log('Preview saved to: ' + desktopPath); 
-        } catch (e) {
-          console.error('Failed to save preview:', e.message);
+        } catch (err) {
+          console.error('Failed to save preview:', err.message);
         }
 
         // 4. Send PDF to printer using pdf-to-printer
