@@ -750,7 +750,7 @@ export default function Issue() {
                             })
                           }}
                           disabled={reprintingId === record.id}
-                          className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-200 rounded-md transition-all flex items-center gap-1 text-xs font-medium"
+                          className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-200 rounded-md transition-all flex items-center gap-1 text-xs font-medium"
                           title="Reprint slip"
                         >
                           {reprintingId === record.id ? (
