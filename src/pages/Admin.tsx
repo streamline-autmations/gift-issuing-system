@@ -769,9 +769,7 @@ function GiftsSection() {
       const { error } = await supabase.from('gift_options').delete().eq('id', optionId)
       if (error) throw error
     },
-    onSuccess: async () => {
-      setMessage('Gift option deleted.')
-      setError(null)
+    onSettled: async () => {
       await qc.invalidateQueries({ queryKey: ['gift-slots', issuingId] })
     },
     onError: (e: any) => {
