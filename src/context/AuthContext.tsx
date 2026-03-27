@@ -39,8 +39,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Using Ctrl + Shift + A (for Admin) to avoid conflicts
-      if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'A') {
+      // Using Ctrl + Alt + Shift + A to avoid ANY system/browser/extension conflicts
+      if (e.ctrlKey && e.altKey && e.shiftKey && e.key.toUpperCase() === 'A') {
         if (session?.user?.email === 'admin@africannomad.co.za') {
           e.preventDefault()
           toggleElevation()
