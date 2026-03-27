@@ -69,13 +69,15 @@ export const printSlip = ({
           color: #000;
           width: ${paperWidthMm}mm;
           background: white;
+          font-weight: bold; /* Make everything bold for clarity */
         }
         
         .slip-container {
           width: ${paperWidthMm}mm;
           margin: 0;
-          padding: 2mm 1mm;
+          padding: 1mm;
           box-sizing: border-box;
+          border: 1px solid white; /* Force content boundary */
         }
 
         h1 {
@@ -83,104 +85,108 @@ export const printSlip = ({
         }
 
         h2 {
-          font-size: 14px;
-          font-weight: bold;
+          font-size: 16px;
+          font-weight: 900;
           margin: 0 0 2px 0;
           text-align: center;
         }
 
         .subline {
-          font-size: 12px;
-          font-weight: bold;
-          margin: 0 0 8px 0;
+          font-size: 14px;
+          font-weight: 900;
+          margin: 0 0 6px 0;
           text-align: center;
         }
 
         .divider {
-          border-bottom: 1px dashed #000;
+          border-bottom: 2px solid #000;
           margin: 4px 0;
         }
 
         .section-title {
-          font-size: 11px;
-          font-weight: bold;
+          font-size: 12px;
+          font-weight: 900;
           text-transform: uppercase;
           margin-bottom: 4px;
+          text-decoration: underline;
         }
 
         .detail-row {
           display: flex;
           margin-bottom: 2px;
-          font-size: 12px;
+          font-size: 13px;
         }
 
         .label {
-          font-weight: bold;
-          width: 30mm;
+          font-weight: 900;
+          width: 28mm;
         }
 
         .value {
           flex: 1;
+          font-weight: 900;
         }
 
         .item-row {
           display: flex;
           align-items: center;
-          padding: 3px 0;
+          padding: 2px 0;
         }
 
         .quantity {
-          font-weight: bold;
-          font-size: 12px;
-          margin-right: 10px;
-          width: 20px;
+          font-weight: 900;
+          font-size: 14px;
+          margin-right: 8px;
+          width: 18px;
         }
 
         .slot-name {
-          font-weight: bold;
+          font-weight: 900;
           margin-right: 4px;
-          font-size: 12px;
+          font-size: 13px;
         }
 
         .item-name {
-          font-size: 12px;
+          font-size: 13px;
+          font-weight: 900;
         }
 
         .choice-tag {
-          font-size: 10px;
-          color: #666;
+          font-size: 11px;
           margin-left: 4px;
-          font-style: italic;
+          font-weight: 900;
         }
 
         .footer {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-end;
-          margin-top: 10px;
+          margin-top: 8px;
+        }
+
+        .timestamp {
+          font-size: 11px;
+          font-weight: 900;
+          margin-bottom: 6px;
         }
 
         .signature-section {
-          text-align: right;
-          width: 45mm;
+          text-align: left;
         }
 
         .signature-line {
-          border-bottom: 1px solid #333;
-          margin-bottom: 5px;
-          height: 18px;
+          border-bottom: 2px solid #000;
+          margin-bottom: 4px;
+          height: 20px;
+          width: 80%;
         }
 
         .signature-label {
-          font-size: 10px;
-          font-weight: bold;
+          font-size: 11px;
+          font-weight: 900;
         }
         
         .acknowledgment {
-          font-size: 9px;
-          color: #666;
-          margin-top: 3px;
-          text-align: right;
+          font-size: 10px;
+          margin-top: 2px;
+          font-weight: 900;
         }
       </style>
     </head>

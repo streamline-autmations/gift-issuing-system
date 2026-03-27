@@ -47,16 +47,16 @@ const server = http.createServer((req, res) => {
         const browser = await puppeteer.launch({ headless: 'new' });
         const page = await browser.newPage();
         
-        // Set the viewport to make text sharp and crisp
+        // Set the viewport to match the thermal printer width exactly
         // Higher deviceScaleFactor for high-res output
-        await page.setViewport({ width: 400, height: 100, deviceScaleFactor: 5 });
+        await page.setViewport({ width: 302, height: 100, deviceScaleFactor: 5 });
         
         await page.goto(`file:///${tempHtmlPath}`, { waitUntil: 'networkidle0' });
 
         // Get the dynamic height of the content
         const contentHeightMm = await page.evaluate(() => {
           const slip = document.querySelector('.slip-container');
-          if (!slip) return 150;
+          if (!slip) return 80;
           // Return exact height in mm
           return Math.ceil((slip.scrollHeight / 96) * 25.4) + 1; 
         });
@@ -70,7 +70,8 @@ const server = http.createServer((req, res) => {
           scale: 1.0,
           pageRanges: '1',
           displayHeaderFooter: false,
-          preferCSSPageSize: true
+          preferCSSPageSize: true,
+          landscape: false // Ensure portrait orientation
         });
         await browser.close();
         console.log('PDF generated successfully.');
