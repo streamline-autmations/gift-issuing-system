@@ -1036,9 +1036,11 @@ function ExcelImport() {
 }
 
 export default function Dashboard() {
-  const { profile, loading } = useAuth()
+  const { profile, loading, isElevated } = useAuth()
 
   if (loading) return null
+
+  const isSuperAdmin = profile?.role === 'superadmin' || (profile?.email === 'admin@africannomad.co.za' && isElevated)
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -1048,11 +1050,11 @@ export default function Dashboard() {
           <p className="text-sm text-slate-600">Overview and admin tools.</p>
         </div>
 
-        {profile?.role === 'superadmin' ? (
+        {isSuperAdmin ? (
           <ExcelImport />
         ) : (
           <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-700">
-            No dashboard actions are configured for your role yet.
+            You do not have permission to view this page.
           </div>
         )}
       </div>

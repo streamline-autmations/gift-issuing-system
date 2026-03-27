@@ -675,7 +675,7 @@ function GiftsSection() {
         }
       }
 
-      const update: any = { name: name.trim() }
+      const update: any = { name: name.trim() || null }
       if (!lockChoice) update.is_choice = is_choice
 
       const { error } = await supabase.from('gift_slots').update(update).eq('id', slotId)
