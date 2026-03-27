@@ -39,9 +39,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Using Ctrl + Alt + Shift + A to avoid ANY system/browser/extension conflicts
-      if (e.ctrlKey && e.altKey && e.shiftKey && e.key.toUpperCase() === 'A') {
-        if (session?.user?.email === 'admin@africannomad.co.za') {
+      // Reverting to Ctrl + Shift + A as requested, and also keeping Ctrl + Alt + Shift + A for safety
+      const isShortcut = (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'A') || 
+                         (e.ctrlKey && e.altKey && e.shiftKey && e.key.toUpperCase() === 'A');
+      
+      if (isShortcut) {
+        const email = session?.user?.email?.toLowerCase().trim();
+        if (email === 'admin@africannomad.co.za') {
           e.preventDefault()
           toggleElevation()
         }

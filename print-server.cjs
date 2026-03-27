@@ -46,12 +46,28 @@ const server = http.createServer((req, res) => {
         const puppeteer = require('puppeteer');
         const browser = await puppeteer.launch({ headless: 'new' });
         const page = await browser.newPage();
+        
+        // Set the viewport to make text sharp and crisp
+        // A higher deviceScaleFactor (e.g., 4) produces even sharper text for thermal printers
+        await page.setViewport({ width: 302, height: 566, deviceScaleFactor: 4 });
+        
         await page.goto(`file:///${tempHtmlPath}`, { waitUntil: 'networkidle0' });
+
+        // Get the dynamic height of the content to fix the "too long" issue
+        const contentHeightMm = await page.evaluate(() => {
+          const slip = document.querySelector('.slip-container');
+          if (!slip) return 150; // Fallback
+          // Calculate height in mm (assuming 96 DPI)
+          return Math.ceil((slip.offsetHeight / 96) * 25.4) + 10; // Add 10mm padding
+        });
+
         await page.pdf({
           path: tempPdfPath,
           width: '80mm',
+          height: `${contentHeightMm}mm`,
           printBackground: true,
-          margin: { top: '4mm', bottom: '4mm', left: '4mm', right: '4mm' }
+          margin: { top: '0mm', bottom: '0mm', left: '0mm', right: '0mm' },
+          scale: 1.0 // Set scale to 1.0 for maximum sharpness
         });
         await browser.close();
         console.log('PDF generated successfully.');
