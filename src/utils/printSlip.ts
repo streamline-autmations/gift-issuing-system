@@ -227,53 +227,28 @@ export const printSlip = ({
           </div>
         </div>
       </div>
-      <script>
-        window.onload = function() { window.print(); }
-      </script>
-    </body>
-    </html>
-  `
-
-  const iframe = document.createElement('iframe')
-  iframe.style.position = 'fixed'
-  iframe.style.right = '0'
-  iframe.style.bottom = '0'
-  iframe.style.width = '0'
-  iframe.style.height = '0'
-  iframe.style.border = '0'
-  iframe.setAttribute('aria-hidden', 'true')
-  document.body.appendChild(iframe)
-
-  const cleanup = () => {
-    if (iframe.parentNode) iframe.parentNode.removeChild(iframe)
-  }
-
-  const doc = iframe.contentDocument
-  if (!doc) {
-    cleanup()
-    return
-  }
-
-  doc.open()
-  doc.write(htmlContent)
-  doc.close()
-
-  const w = iframe.contentWindow
-  if (!w) {
-    cleanup()
-    return
-  }
-
-  w.onafterprint = () => {
-    cleanup()
-    window.focus()
-  }
-
-  w.onload = () => {
-    w.focus()
-    w.print()
-    setTimeout(() => {
-      window.focus()
-    }, 50)
-  }
+  // Send the HTML content to the local print server
+  fetch('http://localhost:4242/print', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/html',
+    },
+    body: htmlContent,
+  })
+  .then(response => {
+    if (!response.ok) {
+      response.text().then(text => {
+        console.error('Print server error:', text);
+        // Optional: Show a user-facing error message
+        alert(`Printing failed: ${text}`);
+      });
+    } else {
+      console.log('Print job sent to local server successfully.');
+    }
+  })
+  .catch(err => {
+    console.error('Failed to connect to the local print server:', err);
+    // Optional: Show a user-facing error message
+    alert('Could not connect to the local print server. Is it running?');
+  });
 }
