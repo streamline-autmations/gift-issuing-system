@@ -40,24 +40,19 @@ const server = http.createServer((req, res) => {
         console.log('Converting HTML to PDF...');
         const browser = await puppeteer.launch({ headless: 'new' });
         const page = await browser.newPage();
+        
+        // Set the viewport to make text sharp and crisp
+        await page.setViewport({ width: 302, height: 566, deviceScaleFactor: 2 });
+        
         await page.goto(`file://${tempHtmlPath}`, { waitUntil: 'networkidle0' });
         
-        // Get the slip dimensions from the HTML to create a properly sized PDF
-        const dimensions = await page.evaluate(() => {
-          const slip = document.querySelector('.slip-container');
-          if (!slip) return { width: 58, height: 100 }; // Fallback
-          const style = window.getComputedStyle(slip);
-          return {
-            width: parseFloat(style.width) || 58,
-            height: parseFloat(style.height) || 100,
-          };
-        });
-
         await page.pdf({
           path: tempPdfPath,
-          width: `${dimensions.width}mm`,
-          height: `${dimensions.height + 5}mm`, // Add a little extra height
+          width: '80mm',
+          height: '150mm',
           printBackground: true,
+          margin: { top: '2mm', bottom: '2mm', left: '3mm', right: '3mm' },
+          scale: 0.8
         });
         await browser.close();
         console.log('PDF generated successfully.');
