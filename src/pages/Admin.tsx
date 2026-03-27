@@ -298,6 +298,7 @@ function IssuingsSection() {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['issuings', companyId] })
+      await qc.refetchQueries({ queryKey: ['issuings', companyId] })
     },
   })
 
@@ -745,6 +746,7 @@ function GiftsSection() {
       setMessage('Gift slot deleted.')
       setError(null)
       await qc.invalidateQueries({ queryKey: ['gift-slots', issuingId] })
+      await qc.refetchQueries({ queryKey: ['gift-slots', issuingId] })
     },
     onError: (e: any) => {
       setMessage(null)
