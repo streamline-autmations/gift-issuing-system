@@ -16,6 +16,8 @@
     "@tanstack/react-query": "^5.90.21",
     "clsx": "^2.1.1",
     "lucide-react": "^0.575.0",
+    "pdf-to-printer": "^5.7.0",
+    "puppeteer": "^24.40.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.0",
