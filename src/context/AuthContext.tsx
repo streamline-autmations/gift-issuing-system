@@ -39,7 +39,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'U') {
+      // Using Ctrl + Shift + A (for Admin) to avoid conflicts
+      if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'A') {
         if (session?.user?.email === 'admin@africannomad.co.za') {
           e.preventDefault()
           toggleElevation()
@@ -49,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [session?.user?.email])
+  }, [session?.user?.email, toggleElevation])
 
   useEffect(() => {
     let cancelled = false
