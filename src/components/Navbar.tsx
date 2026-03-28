@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { LogOut, LayoutDashboard, Gift, FileBarChart, Shield, UserCog } from 'lucide-react'
+import { LogOut, LayoutDashboard, Gift, FileBarChart, Shield, UserCog, Eye } from 'lucide-react'
 
 export default function Navbar() {
   const { profile, session, signOut, isElevated, toggleElevation } = useAuth()
@@ -16,6 +16,7 @@ export default function Navbar() {
   if (isSuperAdmin) {
     navItems.unshift({ name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard })
     navItems.push({ name: 'Admin', path: '/admin', icon: Shield })
+    navItems.push({ name: 'Slip Preview', path: '/preview-slip', icon: Eye })
   }
 
   return (

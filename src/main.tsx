@@ -10,6 +10,7 @@ import Dashboard from '@/pages/Dashboard'
 import Issue from '@/pages/Issue'
 import Reports from '@/pages/Reports'
 import Admin from '@/pages/Admin'
+import PreviewSlip from '@/pages/PreviewSlip'
 
 const queryClient = new QueryClient()
 
@@ -22,6 +23,7 @@ const router = createBrowserRouter([
       { path: '/issue', element: <Issue /> },
       { path: '/reports', element: <Reports /> },
       { path: '/admin', element: <Admin /> },
+      { path: '/preview-slip', element: <PreviewSlip /> },
       { path: '/', element: <Navigate to="/issue" replace /> },
     ],
   },

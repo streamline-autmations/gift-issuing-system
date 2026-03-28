@@ -1,6 +1,6 @@
 import type { Employee } from '../types'
 
-interface PrintSlipProps {
+export interface PrintSlipProps {
   companyName: string
   issuingName: string
   mineName: string
@@ -9,18 +9,22 @@ interface PrintSlipProps {
   items: { slotName: string; itemName: string; isChoice: boolean }[]
 }
 
-export const printSlip = ({
+/**
+ * Generates the full HTML string for a distribution slip.
+ * Used by both the print function and the in-browser preview page.
+ */
+export function generateSlipHtml({
   companyName,
   issuingName,
   mineName,
   issuedAt,
   employee,
   items,
-}: PrintSlipProps) => {
+}: PrintSlipProps): string {
   // SET PRINTER SIZE HERE:
   // Standard thermal printer (till printer) is usually 58mm or 80mm.
   // Change paperWidthMm to 80 if you have a larger printer.
-  const paperWidthMm = 80 
+  const paperWidthMm = 80
   const paperMarginMm = 2
 
   const now = new Date(issuedAt).toLocaleString()
@@ -51,7 +55,7 @@ export const printSlip = ({
     )
     .join('')
 
-  const htmlContent = `
+  return `
     <!DOCTYPE html>
     <html>
     <head>
@@ -62,69 +66,80 @@ export const printSlip = ({
           margin: ${paperMarginMm}mm;
         }
 
+        * {
+          color: #000000 !important;
+        }
+
         body {
-          font-family: 'Courier New', Courier, monospace;
+          font-family: Arial, sans-serif;
           margin: 0;
           padding: 0;
-          color: #000;
+          color: #000000;
           width: ${paperWidthMm}mm;
           background: white;
-          font-weight: bold; /* Make everything bold for clarity */
+          font-weight: 700;
+          -webkit-print-color-adjust: exact;
         }
-        
+
         .slip-container {
           width: ${paperWidthMm}mm;
           margin: 0;
           padding: 1mm;
           box-sizing: border-box;
-          border: 1px solid white; /* Force content boundary */
+          border: 1px solid white;
         }
 
         h1 {
-          display: none; /* Hide Company Name */
+          display: none;
         }
 
         h2 {
-          font-size: 16px;
-          font-weight: 900;
+          font-size: 18px;
+          font-weight: 700;
           margin: 0 0 2px 0;
           text-align: center;
+          color: #000000;
         }
 
         .subline {
-          font-size: 14px;
-          font-weight: 900;
+          font-size: 16px;
+          font-weight: 700;
           margin: 0 0 6px 0;
           text-align: center;
+          color: #000000;
         }
 
         .divider {
-          border-bottom: 2px solid #000;
+          border-bottom: 2px solid #000000;
           margin: 4px 0;
         }
 
         .section-title {
-          font-size: 12px;
-          font-weight: 900;
+          font-size: 14px;
+          font-weight: 700;
           text-transform: uppercase;
           margin-bottom: 4px;
           text-decoration: underline;
+          color: #000000;
         }
 
         .detail-row {
           display: flex;
           margin-bottom: 2px;
-          font-size: 13px;
+          font-size: 14px;
+          color: #000000;
         }
 
         .label {
-          font-weight: 900;
+          font-weight: 700;
           width: 28mm;
+          color: #000000;
         }
 
         .value {
           flex: 1;
-          font-weight: 900;
+          font-weight: 700;
+          color: #000000;
         }
 
         .item-row {
@@ -134,27 +149,31 @@ export const printSlip = ({
         }
 
         .quantity {
-          font-weight: 900;
-          font-size: 14px;
+          font-weight: 700;
+          font-size: 15px;
           margin-right: 8px;
           width: 18px;
+          color: #000000;
         }
 
         .slot-name {
-          font-weight: 900;
+          font-weight: 700;
           margin-right: 4px;
-          font-size: 13px;
+          font-size: 14px;
+          color: #000000;
         }
 
         .item-name {
-          font-size: 13px;
-          font-weight: 900;
+          font-size: 14px;
+          font-weight: 700;
+          color: #000000;
         }
 
         .choice-tag {
-          font-size: 11px;
+          font-size: 12px;
           margin-left: 4px;
-          font-weight: 900;
+          font-weight: 700;
+          color: #000000;
         }
 
         .footer {
@@ -162,9 +181,10 @@ export const printSlip = ({
         }
 
         .timestamp {
-          font-size: 11px;
-          font-weight: 900;
+          font-size: 12px;
+          font-weight: 700;
           margin-bottom: 6px;
+          color: #000000;
         }
 
         .signature-section {
@@ -173,21 +193,23 @@ export const printSlip = ({
         }
 
         .signature-line {
-          border-bottom: 2px solid #000;
+          border-bottom: 2px solid #000000;
           margin-bottom: 2px;
           height: 30px;
           width: 80%;
         }
 
         .signature-label {
-          font-size: 11px;
-          font-weight: 900;
+          font-size: 12px;
+          font-weight: 700;
+          color: #000000;
         }
-        
+
         .acknowledgment {
-          font-size: 10px;
+          font-size: 11px;
           margin-top: 2px;
-          font-weight: 900;
+          font-weight: 700;
+          color: #000000;
         }
       </style>
     </head>
@@ -196,7 +218,7 @@ export const printSlip = ({
         <h1>${companyName}</h1>
         <h2>${issuingName}</h2>
         <div class="subline">${mineName}</div>
-        
+
         <div class="divider"></div>
 
         <div class="section">
@@ -228,7 +250,11 @@ export const printSlip = ({
       </div>
     </body>
     </html>
-  `;
+  `
+}
+
+export const printSlip = (props: PrintSlipProps) => {
+  const htmlContent = generateSlipHtml(props)
 
   // Send the HTML content to the local print server
   fetch('http://localhost:4242/print', {
@@ -242,7 +268,6 @@ export const printSlip = ({
     if (!response.ok) {
       response.text().then(text => {
         console.error('Print server error:', text);
-        // Optional: Show a user-facing error message
         alert(`Printing failed: ${text}`);
       });
     } else {
@@ -251,7 +276,6 @@ export const printSlip = ({
   })
   .catch(err => {
     console.error('Failed to connect to the local print server:', err);
-    // Optional: Show a user-facing error message
     alert('Could not connect to the local print server. Is it running?');
   });
 }
