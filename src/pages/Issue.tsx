@@ -150,7 +150,7 @@ export default function Issue() {
           setSelectedIssuingId(list[0].id)
         }
       })
-  }, [profile?.company_id, selectedIssuingId])
+  }, [profile?.company_id])
 
   useEffect(() => {
     if (!selectedIssuingId) return
@@ -380,7 +380,7 @@ export default function Issue() {
         .select('id, issued_at')
         .single()
 
-      if (recordError || !record) throw recordError
+      if (recordError || !record) throw recordError ?? new Error('Failed to create issued record')
 
       const selectionsToInsert: Array<Omit<IssuedSelection, 'gift_option' | 'slot'>> = []
 
@@ -418,7 +418,7 @@ export default function Issue() {
         const slot = sv.employeeSlot.slot
         const selectedOptionId = slot.is_choice ? choices[slot.id] : sv.fixedOption?.id
         const itemName = selectedOptionId ? optionNameById.get(selectedOptionId) ?? '' : ''
-        return { slotName: slot.name, itemName, isChoice: slot.is_choice }
+        return { slotName: slot.name ?? '', itemName, isChoice: slot.is_choice }
       })
 
       printSlip({

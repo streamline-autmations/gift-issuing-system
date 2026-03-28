@@ -55,7 +55,7 @@ const server = http.createServer((req, res) => {
         const page = await browser.newPage();
         
         await page.setViewport({ width: 302, height: 800, deviceScaleFactor: 1 }); 
-        await page.goto('file:///' + tempHtmlPath, { waitUntil: 'networkidle0' }); 
+        await page.goto('file:///' + tempHtmlPath.replace(/\\/g, '/'), { waitUntil: 'networkidle0' }); 
         const contentHeightPx = await page.evaluate(function() { 
           var el = document.querySelector('.slip-container'); 
           return el ? el.scrollHeight : document.body.scrollHeight; 

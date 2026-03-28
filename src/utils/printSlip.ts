@@ -189,13 +189,13 @@ export function generateSlipHtml({
 
         .signature-section {
           text-align: left;
-          margin-top: 5px;
+          margin-top: 20px;
         }
 
         .signature-line {
           border-bottom: 2px solid #000000;
           margin-bottom: 2px;
-          height: 30px;
+          height: 50px;
           width: 80%;
         }
 

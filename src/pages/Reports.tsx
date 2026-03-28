@@ -12,7 +12,7 @@ export default function Reports() {
   const [companies, setCompanies] = useState<{ id: string, name: string }[]>([])
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('')
   const [issuings, setIssuings] = useState<Issuing[]>([])
-  const [selectedIssuingId, setSelectedIssuingId] = useState<string>('')
+  const [selectedIssuingId, setSelectedIssuingId] = useState<string>(() => localStorage.getItem('activeIssuingId') || '')
 
   // Data State
   const [loading, setLoading] = useState(false)
@@ -87,10 +87,9 @@ export default function Reports() {
   // 2. Load Issuings when Company Selected
   useEffect(() => {
     if (!selectedCompanyId) return
-    
+
     setIssuings([])
-    setSelectedIssuingId('')
-    
+
     supabase
       .from('issuings')
       .select('*')
@@ -99,11 +98,22 @@ export default function Reports() {
       .then(({ data }) => {
         if (data) {
           setIssuings(data)
-          // Optional: Auto-select most recent active?
-          // For now let user select.
+          // If the stored issuing belongs to this company, keep it selected
+          const stored = localStorage.getItem('activeIssuingId') || ''
+          if (stored && data.some((i) => i.id === stored)) {
+            setSelectedIssuingId(stored)
+          } else {
+            setSelectedIssuingId('')
+          }
         }
       })
   }, [selectedCompanyId])
+
+  // Sync issuing selection to localStorage
+  useEffect(() => {
+    if (!selectedIssuingId) return
+    localStorage.setItem('activeIssuingId', selectedIssuingId)
+  }, [selectedIssuingId])
 
   // 3. Load Report Data when Issuing Selected
   useEffect(() => {
