@@ -269,7 +269,8 @@ function IssuingsSection() {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [mineName, setMineName] = useState('')
-  
+  const [issuingError, setIssuingError] = useState<string | null>(null)
+
   // Edit mode state
   const [editOpen, setEditOpen] = useState(false)
   const [editIssuing, setEditIssuing] = useState<Issuing | null>(null)
@@ -325,27 +326,31 @@ function IssuingsSection() {
         .select('id')
         .eq('issuing_id', issuingId)
         .limit(1)
-      
+
       if (employees && employees.length > 0) {
         throw new Error('Cannot delete issuing with employees. Remove employees first.')
       }
-      
+
       // Check for issued records
       const { data: issued } = await supabase
         .from('issued_records')
         .select('id')
         .eq('issuing_id', issuingId)
         .limit(1)
-      
+
       if (issued && issued.length > 0) {
         throw new Error('Cannot delete issuing with issued records.')
       }
-      
+
       const { error } = await supabase.from('issuings').delete().eq('id', issuingId)
       if (error) throw error
     },
     onSuccess: async () => {
+      setIssuingError(null)
       await qc.invalidateQueries({ queryKey: ['issuings', companyId] })
+    },
+    onError: (e: any) => {
+      setIssuingError(e?.message || 'Could not delete issuing.')
     },
   })
 
@@ -372,6 +377,8 @@ function IssuingsSection() {
           Create New Issuing
         </button>
       </div>
+
+      {issuingError ? <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{issuingError}</div> : null}
 
       {!isAfricanNomadAdmin && (
         <div className="rounded-xl border border-slate-200 bg-white p-4">
