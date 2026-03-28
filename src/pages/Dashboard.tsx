@@ -128,6 +128,14 @@ function ExcelImport() {
     },
   })
 
+  // Auto-select company when there is only one
+  useEffect(() => {
+    const companies = companiesQuery.data
+    if (companies && companies.length === 1 && !companyId) {
+      setCompanyId(companies[0].id)
+    }
+  }, [companiesQuery.data, companyId])
+
   const issuingsQuery = useQuery({
     queryKey: ['issuings', companyId],
     enabled: Boolean(companyId),
@@ -569,21 +577,23 @@ function ExcelImport() {
               <p className="text-sm text-slate-600">Choose where these employees will be imported.</p>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Company</label>
-                <select
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
-                  value={companyId}
-                  onChange={(e) => setCompanyId(e.target.value)}
-                >
-                  <option value="">Select company...</option>
-                  {companiesQuery.data?.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {(companiesQuery.data?.length ?? 0) > 1 ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Company</label>
+                  <select
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
+                    value={companyId}
+                    onChange={(e) => setCompanyId(e.target.value)}
+                  >
+                    <option value="">Select company...</option>
+                    {companiesQuery.data?.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Issuing</label>
                 <select

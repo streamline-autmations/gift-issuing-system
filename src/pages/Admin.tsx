@@ -1048,12 +1048,12 @@ function GiftsSection() {
           }}
         >
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Slot name</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Slot name <span className="text-slate-400">(optional)</span></label>
             <input
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
               value={editSlotName}
               onChange={(e) => setEditSlotName(e.target.value)}
-              required
+              placeholder="Leave empty for unnamed slot"
             />
           </div>
           <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">

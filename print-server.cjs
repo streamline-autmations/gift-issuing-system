@@ -60,13 +60,12 @@ const server = http.createServer((req, res) => {
           var el = document.querySelector('.slip-container'); 
           return el ? el.scrollHeight : document.body.scrollHeight; 
         }); 
-        var heightMm = Math.ceil((contentHeightPx / 96) * 25.4) + 4; 
-        
-        // If the slip is reported as 30cm, we need to find out why. 
-        // For now, let's cap it or adjust to get it closer to 10cm if it's crazy long.
-        if (heightMm > 150) {
-          console.log('Original calculated height too long (' + heightMm + 'mm), adjusting...');
-          heightMm = 120; // Target around 10-12cm
+        var heightMm = Math.ceil((contentHeightPx / 96) * 25.4) + 2;
+
+        // Cap height to ~10cm to prevent excessively long slips
+        if (heightMm > 100) {
+          console.log('Original calculated height too long (' + heightMm + 'mm), capping to 100mm');
+          heightMm = 100;
         }
         
         console.log('Slip height calculated: ' + heightMm + 'mm'); 
@@ -94,7 +93,7 @@ const server = http.createServer((req, res) => {
 
         // 4. Send PDF to printer using pdf-to-printer
         const printer = require('pdf-to-printer');
-        await printer.print(tempPdfPath, { printer: PRINTER_NAME });
+        await printer.print(tempPdfPath, { printer: PRINTER_NAME, orientation: 'portrait', scale: 'noscale' });
         console.log(`Print job sent to "${PRINTER_NAME}" successfully.`);
 
         // 4. Clean up temp files
