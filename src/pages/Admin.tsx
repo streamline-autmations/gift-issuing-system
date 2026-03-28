@@ -320,28 +320,8 @@ function IssuingsSection() {
 
   const deleteMutation = useMutation({
     mutationFn: async ({ issuingId }: { issuingId: string }) => {
-      // Check if there are employees in this issuing
-      const { data: employees } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('issuing_id', issuingId)
-        .limit(1)
-
-      if (employees && employees.length > 0) {
-        throw new Error('Cannot delete issuing with employees. Remove employees first.')
-      }
-
-      // Check for issued records
-      const { data: issued } = await supabase
-        .from('issued_records')
-        .select('id')
-        .eq('issuing_id', issuingId)
-        .limit(1)
-
-      if (issued && issued.length > 0) {
-        throw new Error('Cannot delete issuing with issued records.')
-      }
-
+      // CASCADE constraints in the database automatically clean up
+      // employees, gift_slots, issued_records, etc. when an issuing is deleted.
       const { error } = await supabase.from('issuings').delete().eq('id', issuingId)
       if (error) throw error
     },
@@ -455,7 +435,7 @@ function IssuingsSection() {
                       <button
                         type="button"
                         onClick={() => {
-                          if (confirm('Are you sure you want to delete this issuing?')) {
+                          if (confirm('Are you sure you want to delete this issuing? This will also delete all employees, gift slots, and issued records in this issuing.')) {
                             deleteMutation.mutate({ issuingId: i.id })
                           }
                         }}
@@ -726,26 +706,7 @@ function GiftsSection() {
 
   const deleteSlotMutation = useMutation({
     mutationFn: async ({ slotId }: { slotId: string }) => {
-      const { data: anyEmployeeSlots } = await supabase
-        .from('employee_slots')
-        .select('id')
-        .eq('slot_id', slotId)
-        .limit(1)
-
-      if (anyEmployeeSlots && anyEmployeeSlots.length > 0) {
-        throw new Error('This slot has employees assigned. Remove employees/allocations first.')
-      }
-
-      const { data: anyIssued } = await supabase
-        .from('issued_selections')
-        .select('id')
-        .eq('slot_id', slotId)
-        .limit(1)
-
-      if (anyIssued && anyIssued.length > 0) {
-        throw new Error('This slot has already been issued. Cannot delete it.')
-      }
-
+      // CASCADE constraints clean up employee_slots, issued_selections, and gift_options.
       const { error } = await supabase.from('gift_slots').delete().eq('id', slotId)
       if (error) throw error
     },
@@ -763,16 +724,7 @@ function GiftsSection() {
 
   const deleteOptionMutation = useMutation({
     mutationFn: async ({ optionId }: { optionId: string }) => {
-      const { data: anyIssued } = await supabase
-        .from('issued_selections')
-        .select('id')
-        .eq('gift_option_id', optionId)
-        .limit(1)
-
-      if (anyIssued && anyIssued.length > 0) {
-        throw new Error('This option has already been issued. Cannot delete it.')
-      }
-
+      // CASCADE constraints clean up issued_selections referencing this option.
       const { error } = await supabase.from('gift_options').delete().eq('id', optionId)
       if (error) throw error
     },
