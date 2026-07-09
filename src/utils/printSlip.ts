@@ -31,15 +31,6 @@ export function generateSlipHtml({
 
   const fullName = `${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim() || '—'
 
-  const extraDataHtml = employee.extra_data
-    ? Object.entries(employee.extra_data)
-        .map(
-          ([key, value]) =>
-            `<div class="detail-row"><span class="label">${key}:</span> <span class="value">${value}</span></div>`
-        )
-        .join('')
-    : ''
-
   const itemsHtml = items
     .map(
       (item) => `
@@ -225,7 +216,6 @@ export function generateSlipHtml({
           <div class="section-title">Employee Details</div>
           <div class="detail-row"><span class="label">Employee Number:</span> <span class="value">${employee.employee_number}</span></div>
           <div class="detail-row"><span class="label">Name:</span> <span class="value">${fullName}</span></div>
-          ${extraDataHtml}
         </div>
 
         <div class="divider"></div>
