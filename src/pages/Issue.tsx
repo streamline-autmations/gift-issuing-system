@@ -25,6 +25,7 @@ export default function Issue() {
   const [issuings, setIssuings] = useState<Issuing[]>([])
   const [selectedIssuingId, setSelectedIssuingId] = useState(() => localStorage.getItem('activeIssuingId') || '')
   const [companyName, setCompanyName] = useState('')
+  const [printEnabled, setPrintEnabled] = useState(() => localStorage.getItem('printSlipEnabled') !== 'false')
 
   const [employeeNumber, setEmployeeNumber] = useState('')
   const [loading, setLoading] = useState(false)
@@ -97,14 +98,16 @@ export default function Issue() {
       }))
       
       // Print
-      printSlip({
-        companyName: company?.name || 'Company',
-        issuingName: issuing?.name || '',
-        mineName: issuing?.mine_name || '',
-        issuedAt: record.issued_at,
-        employee: emp,
-        items: printItems,
-      })
+      if (printEnabled) {
+        printSlip({
+          companyName: company?.name || 'Company',
+          issuingName: issuing?.name || '',
+          mineName: issuing?.mine_name || '',
+          issuedAt: record.issued_at,
+          employee: emp,
+          items: printItems,
+        })
+      }
     },
   })
 
@@ -421,14 +424,16 @@ export default function Issue() {
         return { slotName: slot.name ?? '', itemName, isChoice: slot.is_choice }
       })
 
-      printSlip({
-        companyName: companyName || 'Company',
-        issuingName: currentIssuing?.name || '',
-        mineName: currentIssuing?.mine_name || '',
-        issuedAt: record.issued_at,
-        employee,
-        items: printItems,
-      })
+      if (printEnabled) {
+        printSlip({
+          companyName: companyName || 'Company',
+          issuingName: currentIssuing?.name || '',
+          mineName: currentIssuing?.mine_name || '',
+          issuedAt: record.issued_at,
+          employee,
+          items: printItems,
+        })
+      }
 
       resetScreen()
       fetchHistory()
@@ -463,6 +468,24 @@ export default function Issue() {
             ))}
           </select>
         </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            const next = !printEnabled
+            setPrintEnabled(next)
+            localStorage.setItem('printSlipEnabled', String(next))
+          }}
+          className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${
+            printEnabled
+              ? 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+              : 'border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100'
+          }`}
+          title={printEnabled ? 'Slips will be sent to the printer' : 'Slips will NOT be printed'}
+        >
+          <Printer size={16} />
+          Print Slip: {printEnabled ? 'On' : 'Off'}
+        </button>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -534,7 +557,8 @@ export default function Issue() {
                       onSettled: () => setReprintingId(null),
                     })
                   }}
-                  disabled={reprintingId === alreadyIssued.id}
+                  disabled={reprintingId === alreadyIssued.id || !printEnabled}
+                  title={printEnabled ? undefined : 'Printing is turned off'}
                 >
                   {reprintingId === alreadyIssued.id ? (
                     <Loader2 size={16} className="animate-spin" />
@@ -749,9 +773,9 @@ export default function Issue() {
                               onSettled: () => setReprintingId(null),
                             })
                           }}
-                          disabled={reprintingId === record.id}
-                          className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-200 rounded-md transition-all flex items-center gap-1 text-xs font-medium"
-                          title="Reprint slip"
+                          disabled={reprintingId === record.id || !printEnabled}
+                          className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-200 rounded-md transition-all flex items-center gap-1 text-xs font-medium disabled:opacity-50"
+                          title={printEnabled ? 'Reprint slip' : 'Printing is turned off'}
                         >
                           {reprintingId === record.id ? (
                             <Loader2 size={14} className="animate-spin" />
