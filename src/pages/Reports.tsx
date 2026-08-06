@@ -576,11 +576,14 @@ export default function Reports() {
             value={selectedIssuingId}
             onChange={(e) => setSelectedIssuingId(e.target.value)}
             disabled={!selectedCompanyId}
-            title={issuings.find(i => i.id === selectedIssuingId)?.name || ''}
+            title={(() => {
+              const sel = issuings.find(i => i.id === selectedIssuingId)
+              return sel ? `${sel.name} (${sel.mine_name})` : ''
+            })()}
             className="border border-gray-300 rounded-md px-3 py-2 bg-white text-gray-800 focus:ring-2 focus:ring-slate-900 outline-none w-full md:w-auto md:min-w-[200px] flex-shrink-0"
           >
             <option value="">Select Issuing...</option>
-            {issuings.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+            {issuings.map(i => <option key={i.id} value={i.id}>{i.name} ({i.mine_name})</option>)}
           </select>
 
           <select
