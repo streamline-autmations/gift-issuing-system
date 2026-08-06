@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useMutation } from '@tanstack/react-query'
 import type { Employee, EmployeeSlot, GiftOption, IssuedRecord, IssuedSelection, Issuing } from '@/types'
 import { printSlip } from '@/utils/printSlip'
-import { AlertCircle, CheckCircle, History, Loader2, Search, Printer } from 'lucide-react'
+import { AlertCircle, CheckCircle, History, Loader2, Search, Printer, Zap } from 'lucide-react'
 
 type SlotView = {
   employeeSlot: EmployeeSlot
@@ -26,6 +26,11 @@ export default function Issue() {
   const [selectedIssuingId, setSelectedIssuingId] = useState(() => localStorage.getItem('activeIssuingId') || '')
   const [companyName, setCompanyName] = useState('')
   const [printEnabled, setPrintEnabled] = useState(() => localStorage.getItem('printSlipEnabled') !== 'false')
+  const [quickDistribute, setQuickDistribute] = useState(
+    () => localStorage.getItem('quickDistributeEnabled') === 'true',
+  )
+  const [quickMessage, setQuickMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const quickMessageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [employeeNumber, setEmployeeNumber] = useState('')
   const [loading, setLoading] = useState(false)
@@ -164,6 +169,18 @@ export default function Issue() {
     inputRef.current?.focus()
   }, [selectedIssuingId])
 
+  useEffect(() => {
+    return () => {
+      if (quickMessageTimeoutRef.current) clearTimeout(quickMessageTimeoutRef.current)
+    }
+  }, [])
+
+  const showQuickMessage = (type: 'success' | 'error', text: string) => {
+    if (quickMessageTimeoutRef.current) clearTimeout(quickMessageTimeoutRef.current)
+    setQuickMessage({ type, text })
+    quickMessageTimeoutRef.current = setTimeout(() => setQuickMessage(null), 1500)
+  }
+
   const resetScreen = () => {
     setEmployee(null)
     setEmployeeSlots([])
@@ -299,8 +316,6 @@ export default function Issue() {
         return
       }
 
-      setEmployee(emp as Employee)
-
       const { data: issued } = await supabase
         .from('issued_records')
         .select('id, employee_id, issuing_id, company_id, issued_at')
@@ -309,6 +324,7 @@ export default function Issue() {
         .maybeSingle()
 
       if (issued) {
+        setEmployee(emp as Employee)
         setAlreadyIssued(issued as IssuedRecord)
         setShowHistory(true)
         return
@@ -320,6 +336,7 @@ export default function Issue() {
         .eq('employee_id', emp.id)
 
       if (slotsError) {
+        setEmployee(emp as Employee)
         setError('Failed to load employee gift slots.')
         return
       }
@@ -331,8 +348,6 @@ export default function Issue() {
         company_id: row.company_id,
         slot: row.slot,
       })) as EmployeeSlot[]
-
-      setEmployeeSlots(normalized)
 
       // Auto-select single-product choice slots
       const fixedChecks: Record<string, boolean> = {}
@@ -352,6 +367,30 @@ export default function Issue() {
           fixedChecks[es.slot.id] = options.length === 1 ? true : false
         }
       }
+
+      // Quick Distribute: if every slot resolves unambiguously (single-option
+      // fixed/choice slots), skip the review screen and distribute immediately.
+      const readyForQuickDistribute =
+        quickDistribute &&
+        normalized.length > 0 &&
+        normalized.every((es) =>
+          es.slot.is_choice ? Boolean(choiceSelections[es.slot.id]) : fixedChecks[es.slot.id] === true,
+        )
+
+      if (readyForQuickDistribute) {
+        const slotViewsLocal: SlotView[] = normalized.map((es) => {
+          const options = es.slot.gift_options ?? []
+          const fixedOption = es.slot.is_choice ? null : options[0] ?? null
+          return { employeeSlot: es, fixedOption, options }
+        })
+
+        const success = await runDistribute(emp as Employee, slotViewsLocal, choiceSelections)
+        if (success) showQuickMessage('success', 'Distributed')
+        return
+      }
+
+      setEmployee(emp as Employee)
+      setEmployeeSlots(normalized)
       setChecks(fixedChecks)
       setChoices(choiceSelections)
 
@@ -363,9 +402,12 @@ export default function Issue() {
     }
   }
 
-  const distribute = async () => {
-    if (!employee || !selectedIssuingId || !profile?.company_id) return
-    if (!canDistribute) return
+  const runDistribute = async (
+    emp: Employee,
+    svs: SlotView[],
+    choicesMap: Record<string, string>,
+  ): Promise<boolean> => {
+    if (!selectedIssuingId || !profile?.company_id) return false
 
     setDistributing(true)
     setError(null)
@@ -376,9 +418,9 @@ export default function Issue() {
         .from('issued_records')
         .insert({
           id: issuedRecordId,
-          company_id: employee.company_id,
+          company_id: emp.company_id,
           issuing_id: selectedIssuingId,
-          employee_id: employee.id,
+          employee_id: emp.id,
         })
         .select('id, issued_at')
         .single()
@@ -387,13 +429,13 @@ export default function Issue() {
 
       const selectionsToInsert: Array<Omit<IssuedSelection, 'gift_option' | 'slot'>> = []
 
-      for (const sv of slotViews) {
+      for (const sv of svs) {
         const slot = sv.employeeSlot.slot
         const slotId = slot.id
 
         let optionId = ''
         if (slot.is_choice) {
-          optionId = choices[slotId]
+          optionId = choicesMap[slotId]
         } else {
           optionId = sv.fixedOption?.id ?? ''
         }
@@ -405,7 +447,7 @@ export default function Issue() {
           issued_record_id: issuedRecordId,
           slot_id: slotId,
           gift_option_id: optionId,
-          company_id: employee.company_id,
+          company_id: emp.company_id,
         })
       }
 
@@ -413,13 +455,13 @@ export default function Issue() {
       if (selectionsError) throw selectionsError
 
       const optionNameById = new Map<string, string>()
-      for (const sv of slotViews) {
+      for (const sv of svs) {
         for (const opt of sv.options) optionNameById.set(opt.id, opt.item_name)
       }
 
-      const printItems = slotViews.map((sv) => {
+      const printItems = svs.map((sv) => {
         const slot = sv.employeeSlot.slot
-        const selectedOptionId = slot.is_choice ? choices[slot.id] : sv.fixedOption?.id
+        const selectedOptionId = slot.is_choice ? choicesMap[slot.id] : sv.fixedOption?.id
         const itemName = selectedOptionId ? optionNameById.get(selectedOptionId) ?? '' : ''
         return { slotName: slot.name ?? '', itemName, isChoice: slot.is_choice }
       })
@@ -430,19 +472,27 @@ export default function Issue() {
           issuingName: currentIssuing?.name || '',
           mineName: currentIssuing?.mine_name || '',
           issuedAt: record.issued_at,
-          employee,
+          employee: emp,
           items: printItems,
         })
       }
 
       resetScreen()
       fetchHistory()
+      return true
     } catch {
       setError('Failed to distribute. Please try again.')
+      return false
     } finally {
       setDistributing(false)
       inputRef.current?.focus()
     }
+  }
+
+  const distribute = async () => {
+    if (!employee || !selectedIssuingId || !profile?.company_id) return
+    if (!canDistribute) return
+    await runDistribute(employee, slotViews, choices)
   }
 
   return (
@@ -486,7 +536,42 @@ export default function Issue() {
           <Printer size={16} />
           Print Slip: {printEnabled ? 'On' : 'Off'}
         </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const next = !quickDistribute
+            setQuickDistribute(next)
+            localStorage.setItem('quickDistributeEnabled', String(next))
+          }}
+          className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${
+            quickDistribute
+              ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+              : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+          }`}
+          title={
+            quickDistribute
+              ? 'Employees with a single gift option per slot are distributed the instant they are found — no review screen'
+              : 'You will need to press Distribute for every employee'
+          }
+        >
+          <Zap size={16} />
+          Quick Distribute: {quickDistribute ? 'On' : 'Off'}
+        </button>
       </div>
+
+      {quickMessage ? (
+        <div
+          className={`fixed top-4 right-4 z-50 rounded-lg border px-4 py-3 shadow-lg font-semibold flex items-center gap-2 ${
+            quickMessage.type === 'success'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+              : 'bg-red-50 border-red-300 text-red-800'
+          }`}
+        >
+          {quickMessage.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+          {quickMessage.text}
+        </div>
+      ) : null}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex gap-4">
