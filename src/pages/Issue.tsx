@@ -398,7 +398,9 @@ export default function Issue() {
       setError('An unexpected error occurred.')
     } finally {
       setLoading(false)
-      inputRef.current?.focus()
+      // Wait a tick so the input's `disabled` attribute has cleared in the DOM
+      // before we try to focus it — otherwise the browser ignores the call.
+      setTimeout(() => inputRef.current?.focus(), 0)
     }
   }
 
